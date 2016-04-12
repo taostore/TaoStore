@@ -40,6 +40,9 @@ public class TaoProcessor implements Processor {
     // Position map which keeps track of what leaf each block corresponds to
     private TaoPositionMap mPositionMap;
 
+    /**
+     * @brief Default constructor
+     */
     public TaoProcessor() {
         // TODO: Create secret key
         mKey = null;

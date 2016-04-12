@@ -1,9 +1,16 @@
 package TaoProxy;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * @brief Class that represents the proxy which handles requests from clients and replies from servers
@@ -34,6 +41,10 @@ public class TaoProxy {
         mProcessor.readPath(req);
     }
 
+    public void onReceiveResponse(Response resp) {
+
+    }
+
     /**
      * @brief Method to run proxy indefinitely
      */
@@ -41,10 +52,27 @@ public class TaoProxy {
         try {
             // TODO: Properly configure to listen for messages from client and server
             // NOTE: currently code is just copy and pasted from internet
-            final AsynchronousServerSocketChannel listener = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(5000));
-            listener.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
+
+            // Create a thread pool for asynchronous sockets
+            AsynchronousChannelGroup threadGroup =
+                    AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Create a channel
+            AsynchronousServerSocketChannel channel =
+                    AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(5000));
+
+            channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
-                public void completed(AsynchronousSocketChannel ch, Void att) {
+                public void completed(AsynchronousSocketChannel ch, Void att){
+                    channel.accept(null, this);
+                    // TODO: Check what information is in the channel ch, then take the appropriate action
+
+                    // if ch is a request from client:
+                        // parse the request
+                        // onReceiveRequest(req)
+                    // if ch is a response from server
+                        // parse the response
+                        // onReceiveResponse(rep)
                 }
 
                 @Override

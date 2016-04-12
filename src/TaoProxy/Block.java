@@ -15,7 +15,7 @@ public class Block {
      */
     public Block() {
         mID = -1;
-        mData = new byte[Constants.BUCKET_SIZE];
+        mData = new byte[Constants.BLOCK_SIZE];
     }
 
     /**
