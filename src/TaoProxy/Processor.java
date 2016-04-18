@@ -11,12 +11,9 @@ public interface Processor {
 
     /**
      * @brief Method to answer the request made by the sequencer
-     * @param req
-     * @param pathID
-     * @param path
-     * @param fakeRead
+     * @param resp
      */
-    void answerRequest(Request req, int pathID, Path path, boolean fakeRead);
+    void answerRequest(Response resp);
 
     /**
      * @brief Flush stash to path

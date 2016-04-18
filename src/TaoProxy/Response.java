@@ -8,7 +8,13 @@ public class Response {
     private Request mRequest;
 
     // Data for path that this response corresponds to
-    private byte[] mData;
+    private Path mPath;
+
+    // Whether or not this is a response for a fake read
+    private boolean mFakeRead;
+
+
+    private long mPathID;
 
     /**
      * @brief Constructor that creates a response for the given request
@@ -17,7 +23,9 @@ public class Response {
      */
     public Response(Request req, byte[] data) {
         mRequest = req;
-        mData = data;
+        // TODO: parse data for blocks
+        mPath = null;
+        mFakeRead = false;
     }
 
     /**
@@ -28,12 +36,17 @@ public class Response {
         return mRequest;
     }
 
-    /**
-     * @brief Accessor for mData
-     * @return the data for the path
-     */
-    public byte[] getData() {
-        return mData;
+
+    public Path getPath() {
+        return mPath;
+    }
+
+    public boolean isFakeRead() {
+        return mFakeRead;
+    }
+
+    public void setFakeRead(boolean fake) {
+        mFakeRead = fake;
     }
 
     // TODO: Create a function to serialize this into bytes to be sent over network

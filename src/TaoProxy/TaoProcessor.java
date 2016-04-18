@@ -72,21 +72,6 @@ public class TaoProcessor implements Processor {
         mPositionMap = new TaoPositionMap();
     }
 
-    public void run() {
-        // Wait for request from Sequencer
-
-        // When request is received, spin up new thread
-            // In new thread:
-                // pathID, path, fakeRead = readPath(request)
-                // acquire locks for bucket that is being read/written
-                // answerRequest(request, pathID, path, fakeRead)
-                // flush(pathID)
-                // unlock bucket
-
-        // check if counter is a multiple of k, c * k
-        // if so, call writeBack(c)
-    }
-
     @Override
     public void readPath(Request req) {
         // Create new entry into response map
@@ -117,50 +102,56 @@ public class TaoProcessor implements Processor {
         // Insert request into mPathReqMultiSet
         mPathReqMultiSet.add(req.getBlockID());
 
-        // TODO: Request path from server
-
-        // When response comes back, remove one instance of the requested block ID from mPathReqMultiSet
-        mPathReqMultiSet.remove(req.getBlockID());
-
-        // TODO: Decrypt path
-        // path = decryption of the returned path
-
-        // TODO: Return the pathID, the path, fakeRead (whether or not this is a fake read)
+        // TODO: Request path from server async request
     }
 
     @Override
-    public void answerRequest(Request req, int pathID, Path path, boolean fakeRead) {
-        // insert every bucket W along path that is not in subtree into subtree
-        mSubtree.addPath(path);
+    public void answerRequest(Response resp) {
+        // When response comes back, remove one instance of the requested block ID from mPathReqMultiSet
+        mPathReqMultiSet.remove(resp.getReq().getBlockID());
+
+        // Get information about response
+        Path path = resp.getPath();
+        Request req = resp.getReq();
+        boolean fakeRead = resp.isFakeRead();
+
+        // Insert every bucket along path that is not in subtree into subtree
+        mSubtree.addPath(resp.getPath());
 
         // Update the response map entry for this request
         ResponseMapEntry responseMapEntry = mResponseMap.get(req);
         responseMapEntry.setReturned(true);
 
-        // check if x is not null, which would be the case if the real read returned before this fake read
+        // check if the data for this response entry is not null, which
+        // would be the case if the real read returned before this fake read
         if (responseMapEntry.getData() != null) {
             // TODO: return mResponseMap.get(req).getData() to sequencer
             mResponseMap.remove(req);
             // return?
         }
 
+        // Get a list of all the requests that have requested this block ID
         List<Request> requestList = mRequestMap.get(req.getBlockID());
+
+        // Check to see if this is the request that caused the real read for this block
         if (!fakeRead) {
+            // Loop through each request in list of requests for this block
             while (!requestList.isEmpty()) {
+                // Get current request that will be processed
                 Request currentRequest = requestList.remove(0);
 
                 // From the path, find the block with blockID == req.getBlockID() and get its data
-                byte[] foundData = path.getData(req.getBlockID());
-
+                Bucket targetBucket = mSubtree.getBucketWithBlock(currentRequest.getBlockID());
+                byte[] foundData = targetBucket.getBlock(currentRequest.getBlockID()).getData();
 
                 // Check if the request was a write
-                if (req.getType() == Request.RequestType.WRITE) {
-                    // TODO: Set block with blockID == req.getBlockID() to have req.getData()
+                if (currentRequest.getType() == Request.RequestType.WRITE) {
+                    targetBucket.modifyBlock(currentRequest.getBlockID(), currentRequest.getData());
                 }
 
-                if (mResponseMap.get(req).getRetured()) {
+                if (mResponseMap.get(currentRequest).getRetured()) {
                     // TODO: send foundData to "sequencer"
-                    mResponseMap.remove(req);
+                    mResponseMap.remove(currentRequest);
                 } else {
                     responseMapEntry.setData(foundData);
                 }
@@ -171,41 +162,71 @@ public class TaoProcessor implements Processor {
             // TODO: Assign block with blockID == req.getBlockID() to a new random path
             mPositionMap.setBlockPosition(req.getBlockID(), -1);
         }
-
-        // if fakeRead == false
-            // while mRequestMap[req.mBlockID].size() != 0
-                // currentRequest = mRequestMap[req.mBlockID].pop()
-                // from the path, find block with block id req.mBlockID and get it's value Z
-                // if req.type == write
-                    // set block with req.mBlockID to have data req.data
-                // if response.map(req) == true
-                    // send Z to sequencer
-                    // response.map.remove(req)
-                // else
-                    // response.map(req) = (false, Z)
     }
 
     @Override
     public void flush(long pathID) {
+        // Increment the amount of times we have flushed
+        mWriteBackCounter++;
+
+        // Get all the blocks from the stash and blocks from this path
         ArrayList<Block> blocksToFlush = new ArrayList<>();
-        blocksToFlush.addAll(mStash.getAllBlocks());
-        blocksToFlush.addAll(mStash.getAllBlocks());
-        blocksToFlush = Lists.newArrayList(Sets.newHashSet(blocksToFlush));;
 
-        // TODO: Create a heap based on current blocks
-
-        for (Block b : blocksToFlush) {
-            // push block bid as far as possible in subtree down path pathID
+        blocksToFlush.addAll(mStash.getAllBlocks());
+        Bucket[] buckets = mSubtree.getPath(pathID).getBuckets();
+        for (Bucket b : buckets) {
+            blocksToFlush.addAll(Arrays.asList(b.getBlocks()));
         }
 
-        mWriteBackCounter++;
-        mWriteQueue.add(pathID);
+        // Remove duplicates
+        blocksToFlush = Lists.newArrayList(Sets.newHashSet(blocksToFlush));
 
-        // TODO: for every bucket that has been updated, add time-stamp t = counter
+        // Create heap based on the block's path ID when compared to the target path ID
+        PriorityQueue<Block> blockHeap = new PriorityQueue<>(Constants.BUCKET_SIZE, new BlockPathComparator(pathID, mPositionMap));
+        blockHeap.addAll(blocksToFlush);
+
+        Block currentBlock;
+        int level = TaoProxy.TREE_HEIGHT;
+        Path newPath = new Path(pathID);
+
+        while (!blockHeap.isEmpty() && level >= 0) {
+            // Get block at top of heap
+            currentBlock = blockHeap.peek();
+
+            // Find the path ID that this block maps to
+            long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
+
+            // Check if this block can be inserted at this level
+            if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
+                // If the block can be inserted at this level, get the bucket
+                Bucket pathBucket = newPath.getBucket(level);
+
+                // Check to make sure bucket exists first
+                if (pathBucket == null) {
+                    // Insert empty bucket into level
+                    newPath.insertBucket(null, level);
+                    pathBucket = newPath.getBucket(level);
+                }
+
+                // Try to add this block into the path and update the bucket's timestamp
+                if (pathBucket.addBlock(currentBlock, mWriteBackCounter)) {
+                    blockHeap.poll();
+                    continue;
+                }
+            }
+            level--;
+        }
+
+        // Add this path to the write queue
+        mWriteQueue.add(pathID);
     }
 
     @Override
     public void writeBack(long timeStamp) {
+        if (mWriteBackCounter % Constants.WRITE_BACK_THRESHOLD != 0) {
+            return;
+        }
+
         // Pop off pathIDs from write queue and retrieve corresponding paths from subtree
         ArrayList<Path> writebackPaths = new ArrayList<>();
 
@@ -213,11 +234,10 @@ public class TaoProcessor implements Processor {
             writebackPaths.add(mSubtree.getPath(mWriteQueue.remove()));
         }
 
-        // copy k paths to temporary space S
-        // encrypt paths in S
-        // write paths in S to server with timestamp timeStamp
-        // when server responds:
-            // delete buckets in subtree from the k paths when the timestamp of that bucket is <= timeStamp * k and
-            // the bucket is not in path on mPathReqMultiSet
+        // TODO: serialize all paths and encrypt
+        // TODO: write paths to server, wait for response
+        // TODO: upon response, delete all nodes in subtree whose timestamp is <= timeStamp, and are not in mPathReqMultiSet
     }
+
+
 }

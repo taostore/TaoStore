@@ -16,6 +16,10 @@ public class TaoServer {
 
     }
 
+    public byte[] readPath(long pathID) {
+        return null;
+    }
+
     /**
      * @brief Method to run proxy indefinitely
      */

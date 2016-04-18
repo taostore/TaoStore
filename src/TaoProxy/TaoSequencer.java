@@ -37,8 +37,8 @@ public class TaoSequencer implements Sequencer{
     }
 
     @Override
-    public void onReceiveResponse(Response resp) {
-        mRequestMap.replace(resp.getReq(), resp.getData());
+    public void onReceiveResponse(Response resp, byte[] data) {
+        mRequestMap.replace(resp.getReq(), data);
     }
 
     @Override

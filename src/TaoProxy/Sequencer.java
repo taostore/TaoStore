@@ -11,7 +11,7 @@ public interface Sequencer {
      * @brief
      * @param resp
      */
-    void onReceiveResponse(Response resp);
+    void onReceiveResponse(Response resp , byte[] data);
 
     /**
      * @brief
