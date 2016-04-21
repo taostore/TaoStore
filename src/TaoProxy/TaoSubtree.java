@@ -1,14 +1,15 @@
 package TaoProxy;
 
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @brief Class that represents the subtree component of the proxy
  */
 public class TaoSubtree implements Subtree {
     // Map that maps a block ID to the bucket that contains that block
-    private Map<Long, Bucket> mBlockMap;
+    private Map<Long, SubtreeBucket> mBlockMap;
 
     // Map that maps a path ID to a path
     private SubtreeBucket mRoot;
@@ -17,11 +18,12 @@ public class TaoSubtree implements Subtree {
      * @brief Default constructor
      */
     public TaoSubtree() {
+        mBlockMap = new ConcurrentHashMap<>();
     }
 
     @Override
     public Bucket getBucketWithBlock(long blockID) {
-        return null;
+        return mBlockMap.getOrDefault(blockID, null);
     }
 
     @Override
@@ -34,37 +36,89 @@ public class TaoSubtree implements Subtree {
 
         // Get the directions for this path
         boolean[] pathDirection = Utility.getPathFromPID(path.getID(), TaoProxy.TREE_HEIGHT);
-
+        System.out.println("we are turning how many times " + pathDirection.length);
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
 
         // Keep track of where on the path we are
         int i = 1;
-        for (Boolean left : pathDirection) {
+        for (Boolean right : pathDirection) {
             // Determine whether the path is turning left or right from current bucket
-            if (left) {
-                // Attempt to initialize left bucket
-                currentBucket.initializeLeft(path.getBucket(i));
-
-                // Move to next bucket
-                currentBucket = currentBucket.getLeft();
-            } else {
+            if (right) {
                 // Attempt to initialize right bucket
                 currentBucket.initializeRight(path.getBucket(i));
 
                 // Move to next bucket
                 currentBucket = currentBucket.getRight();
+            } else {
+                // Attempt to initialize left bucket
+                currentBucket.initializeLeft(path.getBucket(i));
+
+                // Move to next bucket
+                currentBucket = currentBucket.getLeft();
             }
 
+            // Add blocks in bucket into map
+            Block[] blocksToAdd = path.getBucket(i).getBlocks();
+            for (Block b : blocksToAdd) {
+                mBlockMap.put(b.getBlockID(), currentBucket);
+            }
             i++;
         }
     }
 
     @Override
     public Path getPath(long pathID) {
+        // Create path and insert the root of tree
+        Path returnPath = new Path(pathID);
+        returnPath.addBucket(mRoot);
+
         // Get the directions for this path
         boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoProxy.TREE_HEIGHT);
 
-        return null;
+        // Keep track of current bucket
+        SubtreeBucket currentBucket = mRoot;
+
+        for (Boolean right : pathDirection) {
+            currentBucket = right ? currentBucket.getRight() : currentBucket.getLeft();
+            returnPath.addBucket(currentBucket);
+        }
+
+        return returnPath;
+    }
+
+    @Override
+    public Path getPathToFlush(long pathID) {
+        // Create path and insert the root of tree
+        Path returnPath = new Path(pathID);
+
+        for (Block b : mRoot.getBlocks()) {
+            mBlockMap.remove(b.getBlockID());
+        }
+
+        mRoot.clearBucket();
+
+        returnPath.addBucket(mRoot);
+
+        // Get the directions for this path
+        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoProxy.TREE_HEIGHT);
+
+        // Keep track of current bucket
+        SubtreeBucket currentBucket = mRoot;
+
+        for (Boolean right : pathDirection) {
+            System.out.println("how many");
+            currentBucket = right ? currentBucket.getRight() : currentBucket.getLeft();
+
+            for (Block b : currentBucket.getBlocks()) {
+                mBlockMap.remove(b.getBlockID());
+            }
+
+            currentBucket.clearBucket();
+
+            returnPath.addBucket(currentBucket);
+        }
+
+        return returnPath;
     }
 }

@@ -20,4 +20,11 @@ public interface Subtree {
      * @return
      */
     Bucket getBucketWithBlock(long blockID);
+
+    /**
+     * @brief Method that clears a path and returns it in order to be flushed
+     * @param pathID
+     * @return
+     */
+    Path getPathToFlush(long pathID);
 }

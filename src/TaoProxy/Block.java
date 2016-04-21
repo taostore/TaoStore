@@ -1,16 +1,16 @@
 package TaoProxy;
 
-import java.io.ByteArrayInputStream;
-import java.io.ObjectInput;
-import java.io.ObjectInputStream;
-import java.io.Serializable;
+import com.google.common.primitives.Longs;
+
+import java.io.*;
+import java.util.Arrays;
 
 /**
  * @brief Class to represent a block
  */
 public class Block implements Serializable {
     // The ID of this block
-    private long mID;
+    private transient long mID;
 
     // The data of this block
     private byte[] mData;
@@ -47,11 +47,9 @@ public class Block implements Serializable {
      */
     public Block(byte[] serializedData) {
         try {
-            ByteArrayInputStream bis = new ByteArrayInputStream(serializedData);
-            ObjectInput in = new ObjectInputStream(bis);
-            Block b = (Block) in.readObject();
-            mID = b.getBlockID();
-            mData = getData();
+            mID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 0, 8));
+            mData = new byte[Constants.BLOCK_SIZE];
+            System.arraycopy(serializedData, Constants.BLOCK_META_DATA_SIZE, mData, 0, Constants.BLOCK_SIZE);
         } catch (Exception e) {
             mID = -1;
             mData = new byte[Constants.BLOCK_SIZE];
@@ -90,5 +88,14 @@ public class Block implements Serializable {
      */
     public void setBlockID(long blockID) {
         mID = blockID;
+    }
+
+    public byte[] serialize() {
+        byte[] returnData = new byte[Constants.BLOCK_META_DATA_SIZE + Constants.BLOCK_SIZE];
+        byte[] idBytes = Longs.toByteArray(mID);
+        System.arraycopy(idBytes, 0, returnData, 0, idBytes.length);
+        System.arraycopy(mData, 0, returnData, Constants.BLOCK_META_DATA_SIZE, Constants.BLOCK_SIZE);
+
+        return returnData;
     }
 }

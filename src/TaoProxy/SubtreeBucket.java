@@ -30,7 +30,11 @@ public class SubtreeBucket extends Bucket {
      */
     public void initializeRight(Bucket bucket) {
         if (mRight == null) {
-            mRight = new SubtreeBucket(bucket);
+            if (bucket != null) {
+                mRight = new SubtreeBucket(bucket);
+            } else {
+                mRight = new SubtreeBucket();
+            }
         }
     }
 
@@ -40,7 +44,11 @@ public class SubtreeBucket extends Bucket {
      */
     public void initializeLeft(Bucket bucket) {
         if (mLeft == null) {
-            mLeft = new SubtreeBucket(bucket);
+            if (bucket != null) {
+                mLeft = new SubtreeBucket(bucket);
+            } else {
+                mLeft = new SubtreeBucket();
+            }
         }
     }
 

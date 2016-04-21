@@ -17,6 +17,11 @@ import static org.junit.Assert.*;
  */
 public class PathTest {
     @Test
+    public void testModify() {
+
+    }
+
+    @Test
     public void testSerialize() {
         try {
             // Set tree height
@@ -27,7 +32,7 @@ public class PathTest {
             Path testPath = new Path(pathID);
 
             // Create empty buckets
-            Bucket[] testBuckets = new Bucket[TaoProxy.TREE_HEIGHT];
+            Bucket[] testBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
 
             // Fill in each bucket
             for (int i = 0; i < testBuckets.length; i++) {
@@ -43,25 +48,20 @@ public class PathTest {
                     Arrays.fill(bytes, (byte) blockID);
                     testBlocks[j].setData(bytes);
 
-                    testBuckets[i].addBlock(testBlocks[j]);
+                    testBuckets[i].addBlock(testBlocks[j], 1);
                 }
 
                 testPath.addBucket(testBuckets[i]);
             }
 
             // Serialize path
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ObjectOutput out = new ObjectOutputStream(bos);
-            out.writeObject(testPath);
-            byte[] yourBytes = bos.toByteArray();
+            byte[] serializedPath = testPath.serialize();
 
             // Deserialize bucket
-            ByteArrayInputStream bis = new ByteArrayInputStream(yourBytes);
-            ObjectInput in = new ObjectInputStream(bis);
-            Path p = (Path) in.readObject();
+            Path deserializedPath = new Path(pathID, serializedPath);
 
             // Check to see if deserialized path is the same as original path
-            Bucket[] newBuckets = p.getBuckets();
+            Bucket[] newBuckets = deserializedPath.getBuckets();
             for (int i = 0; i < newBuckets.length; i++) {
                 Block[] newBlocks = newBuckets[i].getBlocks();
                 Block[] testBlocks = testBuckets[i].getBlocks();
@@ -73,12 +73,6 @@ public class PathTest {
                     assertTrue(Arrays.equals(testBlocks[j].getData(), newBlocks[j].getData()));
                 }
             }
-
-            // Close streams
-            bos.close();
-            out.close();
-            bis.close();
-            in.close();
         } catch (Exception e) {
             fail("Failed: " + e.toString());
         }

@@ -31,4 +31,16 @@ public class TaoStash {
 
         return allBlocks;
     }
+
+    /**
+     * @brief Method to add block b to stash
+     * @param b
+     */
+    public void addBlock(Block b) {
+        mStash.put(b.getBlockID(), b);
+    }
+
+    public Block getBlock(long blockID) {
+        return mStash.getOrDefault(blockID, null);
+    }
 }

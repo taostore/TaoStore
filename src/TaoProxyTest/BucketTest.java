@@ -27,19 +27,15 @@ public class BucketTest {
                 testBlocks[i] = new Block(i);
                 Arrays.fill( bytes, (byte) i );
                 testBlocks[i].setData(bytes);
-                testBucket.addBlock(testBlocks[i]);
+                testBucket.addBlock(testBlocks[i], 1);
             }
 
             // Serialize bucket
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ObjectOutput out = new ObjectOutputStream(bos);
-            out.writeObject(testBucket);
-            byte[] yourBytes = bos.toByteArray();
+            byte[] serializedBucket = testBucket.serialize();
 
+            System.out.println("size of bucket is " + serializedBucket.length);
             // Deserialize bucket
-            ByteArrayInputStream bis = new ByteArrayInputStream(yourBytes);
-            ObjectInput in = new ObjectInputStream(bis);
-            Bucket b = (Bucket) in.readObject();
+            Bucket b = new Bucket(serializedBucket);
 
             // Check to see if deserialized bucket is the same as original bucket
             Block[] newBlocks = b.getBlocks();
@@ -50,12 +46,6 @@ public class BucketTest {
                 // Check the data of each block
                 assertTrue(Arrays.equals(testBlocks[i].getData(), newBlocks[i].getData()));
             }
-
-            // Close streams
-            bos.close();
-            out.close();
-            bis.close();
-            in.close();
         } catch (Exception e) {
             fail("Failed: " + e.toString());
         }

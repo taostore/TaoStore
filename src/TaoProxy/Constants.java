@@ -6,7 +6,9 @@ package TaoProxy;
 public class Constants {
     public static final int BUCKET_SIZE = 4;
     public static final int WRITE_BACK_THRESHOLD = 46;
+    public static final int BLOCK_META_DATA_SIZE = 8;
     public static final int BLOCK_SIZE = 4096;
+
     public static final int PROXY_THREAD_COUNT = 10;
 
     // TODO: Make this user inputted data

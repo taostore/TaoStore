@@ -2,9 +2,12 @@ package TaoProxyTest;
 
 import TaoProxy.Block;
 import TaoProxy.Constants;
+import com.google.common.primitives.Ints;
+import com.google.common.primitives.Longs;
 import org.junit.Test;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import static org.junit.Assert.*;
@@ -25,28 +28,15 @@ public class BlockTest {
             testBlock.setData(bytes);
 
             // Serialize block
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ObjectOutput out = new ObjectOutputStream(bos);
-            out.writeObject(testBlock);
-            byte[] yourBytes = bos.toByteArray();
-
+            byte[] serializedBlock = testBlock.serialize();
+            System.out.println("size of block is " + serializedBlock.length);
             // Deserialize block
-            ByteArrayInputStream bis = new ByteArrayInputStream(yourBytes);
-            ObjectInput in = new ObjectInputStream(bis);
-            Block b = (Block) in.readObject();
+            Block deserializedBlock = new Block(serializedBlock);
 
             // Check to see if deserialized block is the same as original block
-            assertEquals(blockID, b.getBlockID());
-            byte[] newBytes = b.getData();
-            for (int i = 0; i < newBytes.length; i++) {
-                assertEquals(bytes[i], newBytes[i]);
-            }
-
-            // Close streams
-            bos.close();
-            out.close();
-            bis.close();
-            in.close();
+            assertEquals(blockID, deserializedBlock.getBlockID());
+            byte[] newBytes = deserializedBlock.getData();
+            assertTrue(Arrays.equals(bytes, newBytes));
         } catch (Exception e) {
             fail("Failed: " + e.toString());
         }

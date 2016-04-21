@@ -140,19 +140,39 @@ public class TaoProcessor implements Processor {
                 // Get current request that will be processed
                 Request currentRequest = requestList.remove(0);
 
-                // From the path, find the block with blockID == req.getBlockID() and get its data
+                // Now we get the data from the desired block
+                byte[] foundData;
+
+                // First, from the path, find the bucket that has a block with blockID == req.getBlockID()
                 Bucket targetBucket = mSubtree.getBucketWithBlock(currentRequest.getBlockID());
-                byte[] foundData = targetBucket.getBlock(currentRequest.getBlockID()).getData();
+
+                // Check if such a targetBucket was in the subtree. If it was not, the block must be in the stash
+                if (targetBucket == null) {
+                    // The block we are looking for is not in any of the subtree buckets, so get it from the stash
+                    Block targetBlock = mStash.getBlock(currentRequest.getBlockID());
+                    foundData = targetBlock.getData();
+                } else {
+                    // The block was found in one of the subtree buckets
+                    foundData = targetBucket.getDataFromBlock(currentRequest.getBlockID());
+                }
 
                 // Check if the request was a write
                 if (currentRequest.getType() == Request.RequestType.WRITE) {
-                    targetBucket.modifyBlock(currentRequest.getBlockID(), currentRequest.getData());
+                    // Set the data for the block
+                    if (targetBucket == null) {
+                        // TODO modify stash entry
+                        //targetBlock.setData(currentRequest.getData());
+                    } else {
+                        targetBucket.modifyBlock(currentRequest.getBlockID(), currentRequest.getData());
+                    }
                 }
 
+                // Check if the server has responded to this request yet
                 if (mResponseMap.get(currentRequest).getRetured()) {
                     // TODO: send foundData to "sequencer"
                     mResponseMap.remove(currentRequest);
                 } else {
+                    // The server has not yet responded, so we just set the data for this response map entry and move on
                     responseMapEntry.setData(foundData);
                 }
             }
@@ -169,6 +189,61 @@ public class TaoProcessor implements Processor {
         // Increment the amount of times we have flushed
         mWriteBackCounter++;
 
+        // Get a heap based on the block's path ID when compared to the target path ID
+        PriorityQueue<Block> blockHeap = getHeap(pathID);
+
+        // Variables to help with flushing path
+        Block currentBlock;
+        int level = TaoProxy.TREE_HEIGHT;
+
+        // Get path that will be flushed
+        // TODO: Return path and only modify it, do not add
+        Path newPath = mSubtree.getPathToFlush(pathID);
+
+        // Flush path
+        while (!blockHeap.isEmpty() && level >= 0) {
+            // Get block at top of heap
+            currentBlock = blockHeap.peek();
+
+            // Find the path ID that this block maps to
+            long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
+
+            // Check if this block can be inserted at this level
+            if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
+                // If the block can be inserted at this level, get the bucket
+                Bucket pathBucket = newPath.getBucket(level);
+
+                // Try to add this block into the path and update the bucket's timestamp
+                if (pathBucket.addBlock(currentBlock, mWriteBackCounter)) {
+                    // If add was successful, remove block from heap and move on to next block
+                    blockHeap.poll();
+                    continue;
+                }
+            }
+
+            // If we are unable to add a block at this level, move on to next level
+            level--;
+        }
+
+        // Add remaining blocks in heap to stash
+        if (!blockHeap.isEmpty()) {
+            while (!blockHeap.isEmpty()) {
+                mStash.addBlock(blockHeap.poll());
+            }
+        }
+
+        // TODO: update the map of the subtree
+
+        // Add this path to the write queue
+        mWriteQueue.add(pathID);
+    }
+
+    /**
+     * @brief Method to create a max heap where the top element is the current block best suited to be placed along the path
+     * @param pathID
+     * @return max heap based on each block's path id when compared to the passed in pathID
+     */
+    public PriorityQueue<Block> getHeap(long pathID) {
         // Get all the blocks from the stash and blocks from this path
         ArrayList<Block> blocksToFlush = new ArrayList<>();
 
@@ -185,41 +260,9 @@ public class TaoProcessor implements Processor {
         PriorityQueue<Block> blockHeap = new PriorityQueue<>(Constants.BUCKET_SIZE, new BlockPathComparator(pathID, mPositionMap));
         blockHeap.addAll(blocksToFlush);
 
-        Block currentBlock;
-        int level = TaoProxy.TREE_HEIGHT;
-        Path newPath = new Path(pathID);
-
-        while (!blockHeap.isEmpty() && level >= 0) {
-            // Get block at top of heap
-            currentBlock = blockHeap.peek();
-
-            // Find the path ID that this block maps to
-            long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
-
-            // Check if this block can be inserted at this level
-            if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
-                // If the block can be inserted at this level, get the bucket
-                Bucket pathBucket = newPath.getBucket(level);
-
-                // Check to make sure bucket exists first
-                if (pathBucket == null) {
-                    // Insert empty bucket into level
-                    newPath.insertBucket(null, level);
-                    pathBucket = newPath.getBucket(level);
-                }
-
-                // Try to add this block into the path and update the bucket's timestamp
-                if (pathBucket.addBlock(currentBlock, mWriteBackCounter)) {
-                    blockHeap.poll();
-                    continue;
-                }
-            }
-            level--;
-        }
-
-        // Add this path to the write queue
-        mWriteQueue.add(pathID);
+        return blockHeap;
     }
+
 
     @Override
     public void writeBack(long timeStamp) {
@@ -238,6 +281,4 @@ public class TaoProcessor implements Processor {
         // TODO: write paths to server, wait for response
         // TODO: upon response, delete all nodes in subtree whose timestamp is <= timeStamp, and are not in mPathReqMultiSet
     }
-
-
 }
