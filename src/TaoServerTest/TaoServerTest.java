@@ -1,9 +1,7 @@
 package TaoServerTest;
 
 import TaoProxy.Path;
-import TaoProxy.Subtree;
 import TaoProxy.TaoProxy;
-import TaoProxy.TaoSubtree;
 import TaoProxy.Bucket;
 import TaoProxy.Block;
 import TaoProxy.Constants;

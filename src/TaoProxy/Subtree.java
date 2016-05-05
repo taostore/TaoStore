@@ -27,4 +27,6 @@ public interface Subtree {
      * @return
      */
     Path getPathToFlush(long pathID);
+
+    void mapBlockToBucket(long blockID, Bucket bucket);
 }

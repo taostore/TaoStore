@@ -1,18 +1,14 @@
 package TaoProxy;
 
-import com.sun.tools.internal.jxc.ap.Const;
+import com.google.common.primitives.Ints;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * @brief Class that represents the proxy which handles requests from clients and replies from servers
@@ -24,6 +20,8 @@ public class TaoProxy implements Proxy {
     // Processor for proxy
     private Processor mProcessor;
 
+    private AsynchronousChannelGroup mThreadGroup;
+
     // The height of the ORAM tree stored on the server
     public static int TREE_HEIGHT;
 
@@ -33,12 +31,18 @@ public class TaoProxy implements Proxy {
     /**
      * @brief Default constructor
      */
-    public TaoProxy() {
-        mSequencer = new TaoSequencer();
-        mProcessor = new TaoProcessor();
+    public TaoProxy(long minServerSize) {
+        // Create a thread pool for asynchronous sockets
+        try {
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+            mSequencer = new TaoSequencer();
+            mProcessor = new TaoProcessor(this, mThreadGroup);
 
-        // Calculate the size of the ORAM tree in both height and total storage
-        calculateSize(Constants.TOTAL_STORED_DATA);
+            // Calculate the size of the ORAM tree in both height and total storage
+            calculateSize(minServerSize);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -78,56 +82,102 @@ public class TaoProxy implements Proxy {
     }
 
     @Override
-    public void onReceiveRequest(Request req) {
-        // TODO: Finish
+    public void onReceiveRequest(ClientRequest req) {
         mSequencer.onReceiveRequest(req);
         mProcessor.readPath(req);
     }
 
     @Override
-    public void onReceiveResponse(Response resp) {
-        // TODO: lock bucket
-        mProcessor.answerRequest(resp);
+    public void onReceiveResponse(ClientRequest req, ServerResponse resp, boolean isFakeRead) {
+        mProcessor.answerRequest(req, resp, isFakeRead);
 
-        // TODO: get data
-        byte[] data = new byte[1];
-        mSequencer.onReceiveResponse(resp, data);
         mProcessor.flush(resp.getPath().getID());
 
-        // TODO: unlock bucket
-
-        mProcessor.writeBack(1);
+        mProcessor.writeBack(Constants.WRITE_BACK_THRESHOLD);
     }
 
+    @Override
+    public void notifySequencer(ClientRequest req, ServerResponse resp, byte[] data) {
+        mSequencer.onReceiveResponse(req, resp, data);
+    }
 
     public void run() {
         try {
-            // TODO: Properly configure to listen for messages from client and server
-            // NOTE: currently code is just copy and pasted from internet
-
-            // Create a thread pool for asynchronous sockets
-            AsynchronousChannelGroup threadGroup =
-                    AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-
             // Create a channel
             AsynchronousServerSocketChannel channel =
-                    AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(5000));
+                    AsynchronousServerSocketChannel.open(mThreadGroup).bind(new InetSocketAddress(12344));
 
+            // Wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
-                public void completed(AsynchronousSocketChannel ch, Void att){
+                public void completed(AsynchronousSocketChannel ch, Void att) {
+                    // Start listening for another connection
                     channel.accept(null, this);
-                    // TODO: Check what information is in the channel ch, then take the appropriate action
 
-                    // if ch is a request from client:
-                        // parse the request
-                        // onReceiveRequest(req)
-                    // if ch is a response from server
-                        // parse the response
-                        // path = decryption of the returned path
-                        // onReceiveResponse(rep)
+                    // Create a ByteBuffer to read in message
+                    ByteBuffer byteBuffer = ByteBuffer.allocate(4);
+                    ch.read(byteBuffer, null, new CompletionHandler<Integer, Void>() {
+                        @Override
+                        public void completed(Integer result, Void attachment) {
+                            byte[] messageTypeBytes = new byte[4];
+                            byteBuffer.flip();
+                            byteBuffer.get(messageTypeBytes);
+
+                            // TODO: decryption of messageTypeBytes
+
+                            int messageType = Ints.fromByteArray(messageTypeBytes);
+
+                            if (messageType == Constants.CLIENT_REQUEST) {
+                                ByteBuffer messageSizeByteBuffer = ByteBuffer.allocate(4);
+                                ch.read(messageSizeByteBuffer, null, new CompletionHandler<Integer, Void>() {
+
+                                    @Override
+                                    public void completed(Integer result, Void attachment) {
+                                        // TODO: decryption of messageSizeBytes
+                                        byte[] messageSizeBytes = new byte[4];
+                                        messageSizeByteBuffer.flip();
+                                        messageSizeByteBuffer.get(messageSizeBytes);
+                                        int messageSize = Ints.fromByteArray(messageSizeBytes);
+                                        // Parse the request
+
+                                        ByteBuffer messageByteBuffer = ByteBuffer.allocate(messageSize);
+
+                                        ch.read(messageByteBuffer, null, new CompletionHandler<Integer, Void>() {
+
+                                            @Override
+                                            public void completed(Integer result, Void attachment) {
+                                                // TODO: decryption of requestBytes
+                                                byte[] requestBytes = new byte[messageSize];
+                                                messageByteBuffer.flip();
+                                                messageByteBuffer.get(requestBytes);
+                                                ClientRequest clientReq = new ClientRequest(requestBytes);
+
+                                                // Handle request
+                                                onReceiveRequest(clientReq);
+                                            }
+
+                                            @Override
+                                            public void failed(Throwable exc, Void attachment) {
+
+                                            }
+                                        });
+
+                                    }
+
+                                    @Override
+                                    public void failed(Throwable exc, Void attachment) {
+
+                                    }
+                                });
+                            }
+                        }
+
+                        @Override
+                        public void failed(Throwable exc, Void attachment) {
+
+                        }
+                    });
                 }
-
                 @Override
                 public void failed(Throwable exc, Void att) {
                 }
@@ -139,7 +189,7 @@ public class TaoProxy implements Proxy {
 
     public static void main(String[] args) {
         // Create proxy and run
-        TaoProxy proxy = new TaoProxy();
+        TaoProxy proxy = new TaoProxy(Long.parseLong(args[0]));
         proxy.run();
     }
 }

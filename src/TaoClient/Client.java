@@ -1,6 +1,7 @@
 package TaoClient;
 
-import TaoProxy.Request;
+
+import TaoProxy.ClientRequest;
 
 /**
  * Created by ajmagat on 4/12/16.
@@ -8,12 +9,16 @@ import TaoProxy.Request;
 public interface Client {
     /**
      * @brief
-     * @param request
+     * @param blockID
+     * @return
      */
-    void sendRequest(Request request);
+    byte[] read(long blockID);
 
     /**
      * @brief
+     * @param blockID
+     * @param data
+     * @return
      */
-    void receiveReply();
+    boolean write(long blockID, byte[] data);
 }

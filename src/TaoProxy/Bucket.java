@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
@@ -38,7 +39,6 @@ public class Bucket implements Serializable {
         mBucketBitmap = 0;
     }
 
-
     /**
      * @brief Copy constructor
      * @param bucket
@@ -60,7 +60,7 @@ public class Bucket implements Serializable {
     }
 
     /**
-     * @brief Constructor to initialize bucket given the data of all the blocks
+     * @brief Constructor that takes in an array of bytes to be parsed as a Bucket
      * @param serializedData
      */
     public Bucket(byte[] serializedData) {
@@ -230,5 +230,13 @@ public class Bucket implements Serializable {
         }
 
         return returnData;
+    }
+
+    public void lockBucketWrite() {
+        mRWL.writeLock().lock();
+    }
+
+    public void unlockBucketWrite() {
+        mRWL.writeLock().unlock();
     }
 }

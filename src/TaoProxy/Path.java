@@ -43,15 +43,34 @@ public class Path implements Serializable {
         mPathBitmap = 0;
     }
 
-    public Path(long pathID, byte[] serializedData) {
+    public Path(long pathID, byte[] bucketData) {
         mID = pathID;
+
         fillBitmap();
 
         mBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
 
         int entireBucketSize = Bucket.getBucketSize();
         for (int i = 0; i < mBuckets.length; i++) {
-            mBuckets[i] = new Bucket(Arrays.copyOfRange(serializedData, entireBucketSize * i, entireBucketSize + entireBucketSize * i));
+            mBuckets[i] = new Bucket(Arrays.copyOfRange(bucketData, entireBucketSize * i, entireBucketSize + entireBucketSize * i));
+        }
+    }
+
+    /**
+     * @brief Constructor that takes in an array of bytes to be parsed as a Path
+     * @param serializedData
+     */
+    public Path(byte[] serializedData) {
+        mID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 0, 8));
+
+        //mID = pathID;
+        fillBitmap();
+
+        mBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
+
+        int entireBucketSize = Bucket.getBucketSize();
+        for (int i = 0; i < mBuckets.length; i++) {
+            mBuckets[i] = new Bucket(Arrays.copyOfRange(serializedData, 8 + entireBucketSize * i, 8 + entireBucketSize + entireBucketSize * i));
         }
     }
 
@@ -162,17 +181,54 @@ public class Path implements Serializable {
     }
 
     public static int getPathSize() {
-        return (TaoProxy.TREE_HEIGHT + 1) * Bucket.getBucketSize();
+        return 8 + (TaoProxy.TREE_HEIGHT + 1) * Bucket.getBucketSize();
     }
 
+    /**
+     * @brief Method to to return the serialization of this path
+     * @return
+     */
     public byte[] serialize() {
         byte[] returnData = new byte[Path.getPathSize()];
 
+        byte[] idBytes = Longs.toByteArray(mID);
+        System.arraycopy(idBytes, 0, returnData, 0, idBytes.length);
+        int entireBucketSize = Bucket.getBucketSize();
+
+        for(int i = 0; i < mBuckets.length; i++) {
+            System.arraycopy(mBuckets[i].serialize(), 0, returnData, idBytes.length + entireBucketSize * i, entireBucketSize);
+        }
+        return returnData;
+    }
+
+    /**
+     * @brief Method to return the serialization of this path without the 8 bytes for pathID
+     * @return
+     */
+    public byte[] serializeForDiskWrite() {
+        byte[] returnData = new byte[Path.getPathSize() - 8];
         int entireBucketSize = Bucket.getBucketSize();
 
         for(int i = 0; i < mBuckets.length; i++) {
             System.arraycopy(mBuckets[i].serialize(), 0, returnData, entireBucketSize * i, entireBucketSize);
         }
+
         return returnData;
+    }
+
+    public int getPathHeight() {
+        return mBuckets.length;
+    }
+
+    public void lockPath() {
+        for (int i = 0; i < mBuckets.length; i++) {
+            mBuckets[i].lockBucketWrite();
+        }
+    }
+
+    public void unlockPath() {
+        for (int i = 0; i < mBuckets.length; i++) {
+            mBuckets[i].unlockBucketWrite();
+        }
     }
 }

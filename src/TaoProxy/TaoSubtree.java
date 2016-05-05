@@ -2,6 +2,7 @@ package TaoProxy;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -9,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class TaoSubtree implements Subtree {
     // Map that maps a block ID to the bucket that contains that block
-    private Map<Long, SubtreeBucket> mBlockMap;
+    private Map<Long, Bucket> mBlockMap;
 
     // Map that maps a path ID to a path
     private SubtreeBucket mRoot;
@@ -120,5 +121,24 @@ public class TaoSubtree implements Subtree {
         }
 
         return returnPath;
+    }
+
+    public void flushPath(long pathID, PriorityQueue<Block> blockHeap) {
+        // Create path and insert the root of tree
+        Path pathToFlush = getPath(pathID);
+
+        pathToFlush.lockPath();
+
+        for (int i = 0; i < pathToFlush.getPathHeight(); i++) {
+            pathToFlush.getBucket(i).clearBucket();
+        }
+
+        // TODO: add to path
+
+        pathToFlush.unlockPath();
+    }
+
+    public void mapBlockToBucket(long blockID, Bucket bucket) {
+        mBlockMap.put(blockID, bucket);
     }
 }

@@ -28,6 +28,6 @@ public class TaoPositionMap {
      * @return the leaf ID for given block ID, or -1 if block ID is not currently in position map
      */
     public long getBlockPosition(long blockID) {
-        return mPositions.getOrDefault(blockID, -1L);
+        return mPositions.getOrDefault(blockID, 0L);
     }
 }

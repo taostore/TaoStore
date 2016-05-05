@@ -1,5 +1,8 @@
 package TaoProxy;
 
+import java.io.DataOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -14,10 +17,10 @@ public class TaoSequencer implements Sequencer{
 
     // Map that will map each request to the value of the requested block
     // The value will be null if the reply to this request has not yet been received
-    private Map<Request, byte[]> mRequestMap;
+    private Map<ClientRequest, Block> mRequestMap;
 
     // Queue of the received requests
-    private BlockingQueue<Request> mRequestQueue;
+    private BlockingQueue<ClientRequest> mRequestQueue;
 
     /**
      * @brief Default constructor for the TaoStore Sequencer
@@ -26,29 +29,29 @@ public class TaoSequencer implements Sequencer{
         // NOTE: ConcurrentHashMap is weakly consistent amongst different threads. Should be fine in this scenario
         mRequestMap = new ConcurrentHashMap<>();
         mRequestQueue = new ArrayBlockingQueue<>(QUEUE_SIZE);
+
+        Runnable serializeProcedure = this::serializationProcedure;
+
+        new Thread(serializeProcedure).start();
     }
 
     @Override
-    public void onReceiveRequest(Request req) {
-        mRequestMap.put(req, null);
+    public void onReceiveRequest(ClientRequest req) {
+        Block empty = new Block(true);
+
+        mRequestMap.put(req, empty);
         mRequestQueue.add(req);
-
-        /* TODO: send request to processor, probably handle in proxy */
     }
 
     @Override
-    public void onReceiveResponse(Response resp, byte[] data) {
-        mRequestMap.replace(resp.getReq(), data);
-    }
-
-    @Override
-    public void sendRequest(Request req) {
-
-    }
-
-    @Override
-    public void sendResponse(Response resp) {
-
+    public void onReceiveResponse(ClientRequest req, ServerResponse resp, byte[] data) {
+        Block b = new Block();
+        //boolean s = data == null;
+        //System.out.println("data is " + data.length);
+        System.out.println("Does this exist " + mRequestMap.get(req).getBlockID());
+        b.setData(data);
+       // mRequestMap.get(req).setData(data);
+        mRequestMap.replace(req, b);
     }
 
     @Override
@@ -56,14 +59,40 @@ public class TaoSequencer implements Sequencer{
         // Run forever
         while (true) {
             try {
+                System.out.println("Sequencer spinning");
                 // Retrieve request from request queue
                 // Blocks if there is no item in queue
-                Request req = mRequestQueue.take();
+                ClientRequest req = mRequestQueue.take();
 
                 // Wait until the reply for req somes back
-                while (mRequestMap.get(req) == null) {}
+                // TODO: Change from spin
+                byte[] check = null;
+                while (check == null) {
+                    check = mRequestMap.get(req).getData();
+                }
 
-                // TODO: return mRequestMap.get(req) to client
+                System.out.println("Sequencer going to send response");
+
+
+                // Return mRequestMap.get(req) to client
+                ProxyResponse response = null;
+
+                if (req.getType() == ClientRequest.READ) {
+                    response = new ProxyResponse(req.getRequestID(), mRequestMap.get(req).getData());
+                } else if (req.getType() == ClientRequest.WRITE) {
+                    response = new ProxyResponse(req.getRequestID(), true);
+                }
+
+                System.out.print("Sequencer says message ");
+                for (byte b : response.serialize()) {
+                    System.out.print(b);
+                }
+                System.out.println();
+                InetSocketAddress address = req.getClientAddress();
+                Socket socket = new Socket(address.getHostName(), address.getPort());
+                DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+                output.write(response.serializeAsMessage());
+                output.close();
 
                 // Remove request from request map
                 mRequestMap.remove(req);

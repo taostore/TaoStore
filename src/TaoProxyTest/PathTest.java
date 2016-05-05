@@ -58,7 +58,7 @@ public class PathTest {
             byte[] serializedPath = testPath.serialize();
 
             // Deserialize bucket
-            Path deserializedPath = new Path(pathID, serializedPath);
+            Path deserializedPath = new Path(serializedPath);
 
             // Check to see if deserialized path is the same as original path
             Bucket[] newBuckets = deserializedPath.getBuckets();

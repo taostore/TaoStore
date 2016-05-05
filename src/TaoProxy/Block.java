@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Longs;
 
 import java.io.*;
@@ -21,6 +22,11 @@ public class Block implements Serializable {
     public Block() {
         mID = -1;
         mData = new byte[Constants.BLOCK_SIZE];
+    }
+
+    public Block(boolean placeholder) {
+        mID = -1;
+        mData = null;
     }
 
     /**
@@ -61,9 +67,13 @@ public class Block implements Serializable {
      * @return copy of mData
      */
     public byte[] getData() {
-        byte[] returnData = new byte[Constants.BLOCK_SIZE];
-        System.arraycopy(mData, 0, returnData, 0, Constants.BLOCK_SIZE);
-        return returnData;
+        if (mData != null) {
+            byte[] returnData = new byte[Constants.BLOCK_SIZE];
+            System.arraycopy(mData, 0, returnData, 0, Constants.BLOCK_SIZE);
+            return returnData;
+        }
+
+        return null;
     }
 
     /**
@@ -91,11 +101,7 @@ public class Block implements Serializable {
     }
 
     public byte[] serialize() {
-        byte[] returnData = new byte[Constants.BLOCK_META_DATA_SIZE + Constants.BLOCK_SIZE];
         byte[] idBytes = Longs.toByteArray(mID);
-        System.arraycopy(idBytes, 0, returnData, 0, idBytes.length);
-        System.arraycopy(mData, 0, returnData, Constants.BLOCK_META_DATA_SIZE, Constants.BLOCK_SIZE);
-
-        return returnData;
+        return Bytes.concat(idBytes, mData);
     }
 }

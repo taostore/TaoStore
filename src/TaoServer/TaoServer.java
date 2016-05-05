@@ -1,14 +1,18 @@
 package TaoServer;
 
-import TaoProxy.Constants;
+import TaoProxy.*;
 import com.google.common.primitives.Bytes;
+import com.google.common.primitives.Ints;
 
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
+import java.util.concurrent.Executors;
 
 /**
  * @brief Class to represent a server for TaoStore
@@ -124,10 +128,67 @@ public class TaoServer {
         try {
             // TODO: Properly configure to listen for messages from proxy
             // NOTE: currently code is just copy and pasted from internet
-            final AsynchronousServerSocketChannel listener = AsynchronousServerSocketChannel.open().bind(new InetSocketAddress(5000));
-            listener.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
+            // Create a thread pool for asynchronous sockets
+            AsynchronousChannelGroup threadGroup =
+                    AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Create a channel
+            AsynchronousServerSocketChannel channel =
+                    AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(12345));
+
+
+            // Wait for incoming connections
+            channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
-                public void completed(AsynchronousSocketChannel ch, Void att) {
+                public void completed(AsynchronousSocketChannel ch, Void att){
+                    System.out.println("Server going to read");
+                    // TODO: Finish
+                    channel.accept(null, this);
+                    ByteBuffer byteBuffer = ByteBuffer.allocate( Constants.MAX_BYTE_BUFFER_SERVER );
+                    ch.read(byteBuffer, null, new CompletionHandler<Integer, Void>() {
+
+                        @Override
+                        public void completed(Integer result, Void attachment) {
+                            byteBuffer.flip();
+                            System.out.println("Server read something");
+                            byte[] messageTypeBytes = new byte[4];
+
+                            byteBuffer.get(messageTypeBytes);
+
+                            // TODO: decryption of messageTypeBytes
+
+                            int messageType = Ints.fromByteArray(messageTypeBytes);
+                            System.out.println("Server thinks message type is " + messageType);
+                            if (messageType == Constants.PROXY_READ_REQUEST) {
+                                System.out.println("Server got it");
+                                // parse the request
+                                byte[] requestBytes = new byte[ProxyRequest.getProxyReadRequestSize()];
+                                byteBuffer.get(requestBytes);
+
+                                // TODO: decryption of requestBytes
+                                ProxyRequest proxyReq = new ProxyRequest(requestBytes);
+
+                                // Handle request
+                                byte[] returnPathData = readPath(proxyReq.getPathID());
+
+                                // TODO: encrypt and send back to proxy
+                                Path returnPath = new Path(proxyReq.getPathID(), returnPathData);
+
+                                ServerResponse response = new ServerResponse(returnPath);
+
+                                ByteBuffer returnMessage = ByteBuffer.wrap(response.serializeAsMessage());
+                                ch.write(returnMessage);
+                            } else if (messageType == Constants.PROXY_WRITE_REQUEST) {
+                                // parse the request
+                                byte[] requestBytes = new byte[ProxyRequest.getProxyWriteRequestSize()];
+                            }
+                        }
+
+                        @Override
+                        public void failed(Throwable exc, Void attachment) {
+
+                        }
+                    });
                 }
 
                 @Override

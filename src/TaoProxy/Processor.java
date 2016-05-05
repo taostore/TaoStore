@@ -1,19 +1,23 @@
 package TaoProxy;
 
 
+import TaoClient.Client;
+
 public interface Processor {
 
     /**
      * @brief Method to read path from server when given a request from sequencer
      * @param req
      */
-    void readPath(Request req);
+    void readPath(ClientRequest req);
 
     /**
      * @brief Method to answer the request made by the sequencer
+     * @param req
      * @param resp
+     * @param isFakeRead
      */
-    void answerRequest(Response resp);
+    void answerRequest(ClientRequest req, ServerResponse resp, boolean isFakeRead);
 
     /**
      * @brief Flush stash to path

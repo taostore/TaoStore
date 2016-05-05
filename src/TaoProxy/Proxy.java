@@ -8,13 +8,17 @@ public interface Proxy {
      * @brief Method to handle the receiving of a request from the client
      * @param request
      */
-    void onReceiveRequest(Request request);
+    void onReceiveRequest(ClientRequest request);
 
     /**
      * @brief
+     * @param request
      * @param response
+     * @param isFakeRead
      */
-    void onReceiveResponse(Response response);
+    void onReceiveResponse(ClientRequest request, ServerResponse response, boolean isFakeRead);
+
+    void notifySequencer(ClientRequest req, ServerResponse resp, byte[] data);
 
     /**
      * @brief Method to run proxy indefinitely
