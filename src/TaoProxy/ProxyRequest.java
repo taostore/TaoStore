@@ -105,28 +105,16 @@ public class ProxyRequest {
         byte[] returnData = null;
 
         if (mType == ProxyRequest.READ) {
-            returnData = new byte[ProxyRequest.getProxyReadRequestSize()];
-            int metaData = 0;
-
             byte[] typeBytes = Ints.toByteArray(mType);
-            System.arraycopy(typeBytes, 0, returnData, metaData, typeBytes.length);
-            metaData += typeBytes.length;
-
             byte[] pathBytes = Longs.toByteArray(mReadPathID);
-            System.arraycopy(pathBytes, 0, returnData, metaData, pathBytes.length);
-            metaData += pathBytes.length;
-        } else if (mType == ProxyRequest.WRITE) {
-            returnData = new byte[ProxyRequest.getProxyWriteRequestSize()];
-            int metaData = 0;
 
+            returnData = Bytes.concat(typeBytes, pathBytes);
+        } else if (mType == ProxyRequest.WRITE) {
             byte[] typeBytes = Ints.toByteArray(mType);
-            System.arraycopy(typeBytes, 0, returnData, metaData, typeBytes.length);
-            metaData += typeBytes.length;
-            int totalSize = metaData;
-            int pathSize = Path.getPathSize();
-            for (int i = 0; i < Constants.WRITE_BACK_THRESHOLD; i++) {
-                totalSize += mPaths.get(i).serialize().length;
-                System.arraycopy(mPaths.get(i).serialize(), 0, returnData, metaData + pathSize * i, pathSize);
+            returnData = Bytes.concat(typeBytes, mPaths.get(0).serialize());
+
+            for (int i = 1; i < mPaths.size(); i++) {
+                returnData = Bytes.concat(returnData, mPaths.get(i).serialize());
             }
         }
 

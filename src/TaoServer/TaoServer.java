@@ -13,24 +13,39 @@ import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @brief Class to represent a server for TaoStore
  */
 public class TaoServer {
+    // The file object the server will interact with
     RandomAccessFile mDiskFile;
-    long mServerSize;
+
+    // The height of the tree
     int mTreeHeight;
+
+    // The total amount of server storage in MB
+    long mServerSize;
+
+    // Read-write lock for bucket
+    private final transient ReentrantReadWriteLock mRWL = new ReentrantReadWriteLock();
 
     /**
      * @brief Default constructor
      */
     public TaoServer(long minServerSize) {
         try {
+            // Create file object which the server will interact with
             mDiskFile = new RandomAccessFile(ServerConstants.ORAM_FILE, "rws");
-            mTreeHeight = calculateHeight(minServerSize);
-            mServerSize = calculateSize(mTreeHeight);
 
+            // Calculate the height of the tree
+            mTreeHeight = ServerUtility.calculateHeight(minServerSize);
+
+            // Calculate the total amount of space the tree will use
+            mServerSize = ServerUtility.calculateSize(mTreeHeight);
+
+            // Allocate space
             mDiskFile.setLength(mServerSize);
         } catch (Exception e) {
             e.printStackTrace();
@@ -38,25 +53,56 @@ public class TaoServer {
 
     }
 
+    /**
+     * @brief Accessor for mTreeHeight
+     * @return the height of the tree
+     */
     public int getHeight() {
         return mTreeHeight;
     }
 
+    /**
+     * @brief Method which will read the path with the specified pathID from disk and return the result
+     * @param pathID
+     * @return the bytes of the desired path
+     */
     public byte[] readPath(long pathID) {
+        // Size of a bucket
         long bucketSize = ServerConstants.BUCKET_SIZE;
+
+        // Array of byte arrays (buckets expressed as byte array)
         byte[][] pathInBytes = new byte[mTreeHeight + 1][];
         try {
+            // Acquire read lock
+            mRWL.readLock().lock();
+
+            // Get the directions for this path
             boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mTreeHeight);
 
+            // Variable to represent the offset into the disk file
             long offset = 0;
-            long index = 0;
-            int pathIndex = 0;
 
+            // Index into logical array representing the ORAM tree
+            long index = 0;
+
+            // The current bucket we are looking for
+            int currentBucket = 0;
+
+            // Seek into the file
             mDiskFile.seek(offset);
-            pathInBytes[pathIndex] = new byte[(int)bucketSize];
-            mDiskFile.readFully(pathInBytes[pathIndex]);
-            pathIndex++;
+
+            // Allocate byte array for this bucket
+            pathInBytes[currentBucket] = new byte[(int)bucketSize];
+
+            // Read bytes from the disk file into the byte array for this bucket
+            mDiskFile.readFully(pathInBytes[currentBucket]);
+
+            // Increment the current bucket
+            currentBucket++;
+
+            // Visit the rest of the buckets
             for (Boolean right : pathDirection) {
+                // Navigate the array representing the tree
                 if (right) {
                     offset = (2 * index + 2) * bucketSize;
                     index = offset / bucketSize;
@@ -65,43 +111,85 @@ public class TaoServer {
                     index = offset / bucketSize;
                 }
 
+                // Seek into file
                 mDiskFile.seek(offset);
 
-                pathInBytes[pathIndex] = new byte[(int)bucketSize];
-                mDiskFile.readFully(pathInBytes[pathIndex]);
+                // Allocate byte array for this bucket
+                pathInBytes[currentBucket] = new byte[(int)bucketSize];
 
-                pathIndex++;
+                // Read bytes from the disk file into the byte array for this bucket
+                mDiskFile.readFully(pathInBytes[currentBucket]);
+
+                // Increment the current bucket
+                currentBucket++;
             }
+
+            // Release the read lock
+            mRWL.readLock().unlock();
+
+            // Put first bucket into a new byte array representing the final return value
+            byte[] returnData = pathInBytes[0];
+
+            // Add every bucket into the new byte array
+            for (int i = 1; i < pathInBytes.length; i++) {
+                returnData = Bytes.concat(returnData, pathInBytes[i]);
+            }
+
+            // Return complete path
+            return returnData;
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        byte[] returnData = pathInBytes[0];
-
-        for (int i = 1; i < pathInBytes.length; i++) {
-            returnData = Bytes.concat(returnData, pathInBytes[i]);
-        }
-        return returnData;
+        // Return null if there is an error
+        return null;
     }
 
-    public void writePath(long pathID, byte[] data) {
+    /**
+     * @brief Method to write data to the specified file
+     * @param pathID
+     * @param data
+     * @return if the write was successful or not
+     */
+    public boolean writePath(long pathID, byte[] data) {
+        // Size of a bucket
         int bucketSize = (int) ServerConstants.BUCKET_SIZE;
+
         try {
+            // Acquire write lock
+            mRWL.writeLock().lock();
+
+            // Get the directions for this path
             boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mTreeHeight);
 
+            // Variable to represent the offset into the disk file
             long offsetInDisk = 0;
+
+            // Index into logical array representing the ORAM tree
             long indexIntoTree = 0;
 
+            // Indices into the data byte array
             int dataIndexStart = 0;
             int dataIndexStop = bucketSize;
 
+            // Seek into the file
             mDiskFile.seek(offsetInDisk);
+//            System.out.print("Going to write ");
+//            for (byte b : Arrays.copyOfRange(data, dataIndexStart, dataIndexStop)) {
+//                System.out.print(b);
+//            }
+//            System.out.println();
+
+            // Write bucket to disk
             mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
 
+            // Increment indices
             dataIndexStart += bucketSize;
             dataIndexStop += bucketSize;
 
+            // Write the rest of the buckets
             for (Boolean right : pathDirection) {
+                // Navigate the array representing the tree
                 if (right) {
                     offsetInDisk = (2 * indexIntoTree + 2) * bucketSize;
                     indexIntoTree = offsetInDisk / bucketSize;
@@ -110,15 +198,28 @@ public class TaoServer {
                     indexIntoTree = offsetInDisk / bucketSize;
                 }
 
+                // Seek into disk
                 mDiskFile.seek(offsetInDisk);
+
+                // Write bucket to disk
                 mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
 
+                // Increment indices
                 dataIndexStart += bucketSize;
                 dataIndexStop += bucketSize;
             }
+
+            // Release the write lock
+            mRWL.writeLock().unlock();
+
+            // Return true, signaling that the write was successful
+            return true;
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        // Return false, signaling that the write was not successful
+        return false;
     }
 
     /**
@@ -126,8 +227,6 @@ public class TaoServer {
      */
     public void run() {
         try {
-            // TODO: Properly configure to listen for messages from proxy
-            // NOTE: currently code is just copy and pasted from internet
             // Create a thread pool for asynchronous sockets
             AsynchronousChannelGroup threadGroup =
                     AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
@@ -136,63 +235,100 @@ public class TaoServer {
             AsynchronousServerSocketChannel channel =
                     AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(12345));
 
-
-            // Wait for incoming connections
+            // Asynchronously wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
                 public void completed(AsynchronousSocketChannel ch, Void att){
-                    System.out.println("Server going to read");
-                    // TODO: Finish
+                    System.out.println("Hey just accepted a proxy request");
+                    // Start listening for other connections
                     channel.accept(null, this);
-                    ByteBuffer byteBuffer = ByteBuffer.allocate( Constants.MAX_BYTE_BUFFER_SERVER );
-                    ch.read(byteBuffer, null, new CompletionHandler<Integer, Void>() {
 
+                    // Create byte buffer to use to read incoming message
+                    ByteBuffer byteBuffer = ByteBuffer.allocate( Constants.MAX_BYTE_BUFFER_SERVER );
+
+                    // Asynchronously read message
+                    ch.read(byteBuffer, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
-                            byteBuffer.flip();
-                            System.out.println("Server read something");
-                            byte[] messageTypeBytes = new byte[4];
+                            System.out.println("Hey just read a proxy request");
 
+                            // Flip byte buffer so we can read from it
+                            byteBuffer.flip();
+
+                            // Get the bytes from the message that represent what type of message it is
+                            byte[] messageTypeBytes = new byte[4];
                             byteBuffer.get(messageTypeBytes);
 
                             // TODO: decryption of messageTypeBytes
-
+                            // Find out what type of message we have received
                             int messageType = Ints.fromByteArray(messageTypeBytes);
-                            System.out.println("Server thinks message type is " + messageType);
+
+                            // Serve request
                             if (messageType == Constants.PROXY_READ_REQUEST) {
-                                System.out.println("Server got it");
-                                // parse the request
+                                // Get bytes for proxy read request
                                 byte[] requestBytes = new byte[ProxyRequest.getProxyReadRequestSize()];
                                 byteBuffer.get(requestBytes);
 
                                 // TODO: decryption of requestBytes
+                                // Create proxy read request from bytes
                                 ProxyRequest proxyReq = new ProxyRequest(requestBytes);
 
-                                // Handle request
+                                // Read the request path
                                 byte[] returnPathData = readPath(proxyReq.getPathID());
 
-                                // TODO: encrypt and send back to proxy
+                                // Create path based on bytes
                                 Path returnPath = new Path(proxyReq.getPathID(), returnPathData);
 
-                                ServerResponse response = new ServerResponse(returnPath);
+                                // Create a server response
+                                ServerResponse readResponse = new ServerResponse(returnPath);
 
-                                ByteBuffer returnMessage = ByteBuffer.wrap(response.serializeAsMessage());
+                                // TODO: Encrypt the server response?
+                                // Send response to proxy
+                                ByteBuffer returnMessage = ByteBuffer.wrap(readResponse.serializeAsMessage());
+                                //ByteBuffer returnMessage = ByteBuffer.allocate(readResponse.serializeAsMessage().length);
+                                //returnMessage.put(readResponse.serializeAsMessage());
+                                //returnMessage.flip();
+                                System.out.println("Returning message of size " + readResponse.serializeAsMessage().length);
+                                //System.out.println("How much is remaining? " + returnMessage.remaining());
                                 ch.write(returnMessage);
                             } else if (messageType == Constants.PROXY_WRITE_REQUEST) {
-                                // parse the request
+                                // Get bytes for proxy write request
                                 byte[] requestBytes = new byte[ProxyRequest.getProxyWriteRequestSize()];
+                                byteBuffer.get(requestBytes);
+
+                                // TODO: decryption of requestBytes
+                                // Create proxy write request from bytes
+                                ProxyRequest proxyReq = new ProxyRequest(requestBytes);
+
+                                // Write each path
+                                boolean success = true;
+                                for (Path p : proxyReq.getPathList()) {
+                                    if (! writePath(p.getID(), p.serializeForDiskWrite())) {
+                                        success = false;
+                                    }
+                                }
+
+                                // Create a server response
+                                ServerResponse writeResponse = new ServerResponse();
+                                writeResponse.setWriteStatus(success);
+
+                                // TODO: Encrypt the server response?
+                                // Send response to proxy
+                                ByteBuffer returnMessage = ByteBuffer.wrap(writeResponse.serializeAsMessage());
+                                ch.write(returnMessage);
                             }
                         }
 
                         @Override
                         public void failed(Throwable exc, Void attachment) {
-
+                            // TODO: Implement?
                         }
                     });
                 }
 
                 @Override
                 public void failed(Throwable exc, Void att) {
+                    // TODO: Implement?
                 }
             });
         } catch (Exception e) {
@@ -200,49 +336,14 @@ public class TaoServer {
         }
     }
 
-    public int calculateHeight(long storageSize) {
-        // Keep track of the storage size
-        long totalTreeSize = storageSize;
-        long s = totalTreeSize % ServerConstants.TOTAL_BLOCK_SIZE;
-
-        // Pad totalTreeSize so that we have a whole number of blocks
-        if ((totalTreeSize % ServerConstants.TOTAL_BLOCK_SIZE) != 0) {
-            totalTreeSize += ServerConstants.TOTAL_BLOCK_SIZE - (totalTreeSize % ServerConstants.TOTAL_BLOCK_SIZE);
-        }
-
-        // Calculate how many blocks we currently have
-        long numBlocks = totalTreeSize / ServerConstants.TOTAL_BLOCK_SIZE;
-
-        // Pad the number of blocks so we have a whole number of buckets
-        if ((numBlocks % ServerConstants.NUM_BLOCKS_IN_BUCKET) != 0) {
-            numBlocks += ServerConstants.NUM_BLOCKS_IN_BUCKET - (numBlocks % ServerConstants.NUM_BLOCKS_IN_BUCKET);
-        }
-
-        // Calculate the number of buckets we currently have
-        long numBuckets = numBlocks / ServerConstants.NUM_BLOCKS_IN_BUCKET;
-
-        // Calculate the height of our tree given the number of buckets we have
-        return (int) Math.ceil((Math.log(numBuckets + 1) / Math.log(2)) - 1);
-    }
-
-    /**
-     * @brief Method that will calculate the height and total storage requirements for the ORAM tree based on
-     * storageSize, which is the minimum amount of data, in MB, which most be available for storage
-     * @param treeHeight
-     */
-    public long calculateSize(int treeHeight) {
-        // Given the height of tree, we now find the amount of buckets we need to make this a full binary tree
-        long numBuckets = (long) Math.pow(2, treeHeight + 1) - 1;
-        // We can now calculate the total size of the system
-        return numBuckets * ServerConstants.BUCKET_SIZE;
-    }
-
     public static void main(String[] args) {
+        // Make sure user provides a storage size
         if (args.length != 1) {
             System.out.println("Please provide desired size of storage in MB");
             return;
         }
 
+        // Create server and run
         TaoServer server = new TaoServer(Long.parseLong(args[0]));
         server.run();
     }

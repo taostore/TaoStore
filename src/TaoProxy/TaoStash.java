@@ -25,7 +25,9 @@ public class TaoStash {
      */
     public List<Block> getAllBlocks() {
         ArrayList<Block> allBlocks = new ArrayList<>();
+        System.out.println("blocks in stash are");
         for (Long key : mStash.keySet()) {
+            System.out.println("block : " + key);
             allBlocks.add(mStash.get(key));
         }
 
@@ -42,5 +44,11 @@ public class TaoStash {
 
     public Block getBlock(long blockID) {
         return mStash.getOrDefault(blockID, null);
+    }
+
+    public void removeBlock(Block b) {
+        if (mStash.containsKey(b.getBlockID())) {
+            mStash.remove(b.getBlockID());
+        }
     }
 }

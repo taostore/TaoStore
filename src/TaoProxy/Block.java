@@ -5,6 +5,7 @@ import com.google.common.primitives.Longs;
 
 import java.io.*;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * @brief Class to represent a block
@@ -99,6 +100,33 @@ public class Block implements Serializable {
     public void setBlockID(long blockID) {
         mID = blockID;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if ( ! (obj instanceof Block) ) {
+            return false;
+        }
+
+        if (obj == this) {
+            return true;
+        }
+
+        // Two requests are equal if they have the same request ID
+        Block rhs = (Block) obj;
+
+        if (mID != rhs.getBlockID()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        // TODO: add data?
+        return Objects.hash(mID);
+    }
+
 
     public byte[] serialize() {
         byte[] idBytes = Longs.toByteArray(mID);

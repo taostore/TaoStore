@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import TaoServer.ServerUtility;
 import com.google.common.primitives.Ints;
 
 import java.net.InetSocketAddress;
@@ -39,117 +40,102 @@ public class TaoProxy implements Proxy {
             mProcessor = new TaoProcessor(this, mThreadGroup);
 
             // Calculate the size of the ORAM tree in both height and total storage
-            calculateSize(minServerSize);
+            TREE_HEIGHT = ServerUtility.calculateHeight(minServerSize);
+            TOTAL_STORAGE_SIZE = ServerUtility.calculateHeight(TREE_HEIGHT);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    /**
-     * @brief Method that will calculate the height and total storage requirements for the ORAM tree based on
-     * storageSize, which is the minimum amount of data, in MB, which most be available for storage
-     * @param storageSize
-     */
-    public void calculateSize(long storageSize) {
-        // Keep track of the storage size
-        long totalTreeSize = storageSize;
-
-        // Pad totalTreeSize so that we have a whole number of blocks
-        if ((totalTreeSize % Constants.BLOCK_SIZE) != 0) {
-            totalTreeSize += Constants.BLOCK_SIZE - (totalTreeSize % Constants.BLOCK_SIZE);
-        }
-
-        // Calculate how many blocks we currently have
-        long numBlocks = totalTreeSize / Constants.BLOCK_SIZE;
-
-        // Pad the number of blocks so we have a whole number of buckets
-        if ((numBlocks % Constants.BUCKET_SIZE) != 0) {
-            numBlocks += Constants.BUCKET_SIZE - (numBlocks % Constants.BUCKET_SIZE);
-        }
-
-        // Calculate the number of buckets we currently have
-        long numBuckets = numBlocks / Constants.BUCKET_SIZE;
-
-        // Calculate the height of our tree given the number of buckets we have
-        TREE_HEIGHT = (int) Math.ceil((Math.log(numBuckets + 1) / Math.log(2)) - 1);
-
-        // Given the height of tree, we now find the amount of buckets we need to make this a full binary tree
-        numBuckets = (long) Math.pow(2, TREE_HEIGHT + 1) - 1;
-
-        // We can now calculate the total size of the system
-        totalTreeSize = numBuckets * Constants.BUCKET_SIZE * Constants.BLOCK_SIZE;
-        TOTAL_STORAGE_SIZE = totalTreeSize;
-    }
-
     @Override
     public void onReceiveRequest(ClientRequest req) {
+        // When we receive a request, we first send it to the sequencer
         mSequencer.onReceiveRequest(req);
+
+        // We then send the request to the processor, starting with the read path method
         mProcessor.readPath(req);
     }
 
     @Override
     public void onReceiveResponse(ClientRequest req, ServerResponse resp, boolean isFakeRead) {
+        // When a response is received, the processor will answer the request, flush the path, then may perform a
+        // write back
         mProcessor.answerRequest(req, resp, isFakeRead);
-
         mProcessor.flush(resp.getPath().getID());
-
         mProcessor.writeBack(Constants.WRITE_BACK_THRESHOLD);
     }
 
     @Override
     public void notifySequencer(ClientRequest req, ServerResponse resp, byte[] data) {
+        // TODO: Find a way to not need this
         mSequencer.onReceiveResponse(req, resp, data);
     }
 
     public void run() {
         try {
-            // Create a channel
+            // Create an asynchronous channel to listen for connections
             AsynchronousServerSocketChannel channel =
                     AsynchronousServerSocketChannel.open(mThreadGroup).bind(new InetSocketAddress(12344));
 
-            // Wait for incoming connections
+            // Asynchronously wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
                 public void completed(AsynchronousSocketChannel ch, Void att) {
-                    // Start listening for another connection
+                    // Start listening for other connections
                     channel.accept(null, this);
 
-                    // Create a ByteBuffer to read in message
-                    ByteBuffer byteBuffer = ByteBuffer.allocate(4);
-                    ch.read(byteBuffer, null, new CompletionHandler<Integer, Void>() {
+                    // Create a ByteBuffer to read in message type
+                    ByteBuffer typeByteBuffer = ByteBuffer.allocate(4);
+
+                    // Asynchronously read message
+                    ch.read(typeByteBuffer, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
+                            // Flip the byte buffer for reading
+                            typeByteBuffer.flip();
+
+                            // Figure out the type of the message
                             byte[] messageTypeBytes = new byte[4];
-                            byteBuffer.flip();
-                            byteBuffer.get(messageTypeBytes);
+                            typeByteBuffer.get(messageTypeBytes);
 
                             // TODO: decryption of messageTypeBytes
-
                             int messageType = Ints.fromByteArray(messageTypeBytes);
 
+                            // Serve message based on type
                             if (messageType == Constants.CLIENT_REQUEST) {
+                                // If dealing with a client request, need to figure out how large the message is
                                 ByteBuffer messageSizeByteBuffer = ByteBuffer.allocate(4);
-                                ch.read(messageSizeByteBuffer, null, new CompletionHandler<Integer, Void>() {
 
+                                // Do another asynchronous read
+                                ch.read(messageSizeByteBuffer, null, new CompletionHandler<Integer, Void>() {
                                     @Override
                                     public void completed(Integer result, Void attachment) {
-                                        // TODO: decryption of messageSizeBytes
-                                        byte[] messageSizeBytes = new byte[4];
+                                        // Flip the byte buffer for reading
                                         messageSizeByteBuffer.flip();
-                                        messageSizeByteBuffer.get(messageSizeBytes);
-                                        int messageSize = Ints.fromByteArray(messageSizeBytes);
-                                        // Parse the request
 
+                                        // Figure out the size of the rest of the message
+                                        byte[] messageSizeBytes = new byte[4];
+                                        messageSizeByteBuffer.get(messageSizeBytes);
+
+                                        // TODO: decryption of messageSizeBytes
+                                        int messageSize = Ints.fromByteArray(messageSizeBytes);
+
+                                        // Get the rest of the message
                                         ByteBuffer messageByteBuffer = ByteBuffer.allocate(messageSize);
 
+                                        // Do one last asynchronous read to get the rest of the message
                                         ch.read(messageByteBuffer, null, new CompletionHandler<Integer, Void>() {
-
                                             @Override
                                             public void completed(Integer result, Void attachment) {
-                                                // TODO: decryption of requestBytes
-                                                byte[] requestBytes = new byte[messageSize];
+                                                // Flip the byte buffer for reading
                                                 messageByteBuffer.flip();
+
+                                                // Get the rest of the bytes for the message
+                                                byte[] requestBytes = new byte[messageSize];
                                                 messageByteBuffer.get(requestBytes);
+
+                                                // TODO: decryption of requestBytes
+                                                // Create ClientRequest object based on read bytes
                                                 ClientRequest clientReq = new ClientRequest(requestBytes);
 
                                                 // Handle request
@@ -158,28 +144,26 @@ public class TaoProxy implements Proxy {
 
                                             @Override
                                             public void failed(Throwable exc, Void attachment) {
-
+                                                // TODO: implement?
                                             }
                                         });
-
                                     }
-
                                     @Override
                                     public void failed(Throwable exc, Void attachment) {
-
+                                        // TODO: implement?
                                     }
                                 });
                             }
                         }
-
                         @Override
                         public void failed(Throwable exc, Void attachment) {
-
+                            // TODO: implement?
                         }
                     });
                 }
                 @Override
                 public void failed(Throwable exc, Void att) {
+                    // TODO: implement?
                 }
             });
         } catch (Exception e) {

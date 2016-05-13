@@ -1,5 +1,9 @@
 package TaoProxy;
 
+import com.google.common.collect.Multiset;
+
+import java.util.Set;
+
 public interface Subtree {
     /**
      * @brief Method to add a path to the subtree
@@ -29,4 +33,6 @@ public interface Subtree {
     Path getPathToFlush(long pathID);
 
     void mapBlockToBucket(long blockID, Bucket bucket);
+
+    void deleteNodes(long pathID, long minTime, Set<Long> pathReqMultiSet);
 }

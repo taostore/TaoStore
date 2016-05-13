@@ -30,27 +30,30 @@ public class TaoSequencer implements Sequencer{
         mRequestMap = new ConcurrentHashMap<>();
         mRequestQueue = new ArrayBlockingQueue<>(QUEUE_SIZE);
 
+        // Run the serialize procedure in a different thread
         Runnable serializeProcedure = this::serializationProcedure;
-
         new Thread(serializeProcedure).start();
     }
 
     @Override
     public void onReceiveRequest(ClientRequest req) {
+        // Create an empty block with null data
         Block empty = new Block(true);
 
+        // Put request and new empty block into request map
         mRequestMap.put(req, empty);
+
+        // Add this request to the request queue
         mRequestQueue.add(req);
     }
 
     @Override
     public void onReceiveResponse(ClientRequest req, ServerResponse resp, byte[] data) {
+        // Create a new block and set the data
         Block b = new Block();
-        //boolean s = data == null;
-        //System.out.println("data is " + data.length);
-        System.out.println("Does this exist " + mRequestMap.get(req).getBlockID());
         b.setData(data);
-       // mRequestMap.get(req).setData(data);
+
+        // Replace empty null block with new block
         mRequestMap.replace(req, b);
     }
 
@@ -59,13 +62,12 @@ public class TaoSequencer implements Sequencer{
         // Run forever
         while (true) {
             try {
-                System.out.println("Sequencer spinning");
                 // Retrieve request from request queue
                 // Blocks if there is no item in queue
                 ClientRequest req = mRequestQueue.take();
 
                 // Wait until the reply for req somes back
-                // TODO: Change from spin
+                // TODO: Change from spin to something else, maybe condition variable
                 byte[] check = null;
                 while (check == null) {
                     check = mRequestMap.get(req).getData();
@@ -73,21 +75,21 @@ public class TaoSequencer implements Sequencer{
 
                 System.out.println("Sequencer going to send response");
 
-
-                // Return mRequestMap.get(req) to client
+                // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;
-
                 if (req.getType() == ClientRequest.READ) {
                     response = new ProxyResponse(req.getRequestID(), mRequestMap.get(req).getData());
                 } else if (req.getType() == ClientRequest.WRITE) {
                     response = new ProxyResponse(req.getRequestID(), true);
                 }
 
-                System.out.print("Sequencer says message ");
-                for (byte b : response.serialize()) {
-                    System.out.print(b);
-                }
-                System.out.println();
+//                System.out.print("Sequencer says message ");
+//                for (byte b : response.serialize()) {
+//                    System.out.print(b);
+//                }
+//                System.out.println();
+
+                // Send ProxyResponse to client
                 InetSocketAddress address = req.getClientAddress();
                 Socket socket = new Socket(address.getHostName(), address.getPort());
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream());

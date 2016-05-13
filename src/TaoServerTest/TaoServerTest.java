@@ -7,6 +7,9 @@ import TaoProxy.Block;
 import TaoProxy.Constants;
 
 import TaoServer.TaoServer;
+import TaoServer.ServerConstants;
+
+import com.google.common.primitives.Bytes;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -53,8 +56,20 @@ public class TaoServerTest {
         }
 
         // Serialize path
-        byte[] serializedPath = testPath.serialize();
+        byte[] serializedPath = testPath.serializeForDiskWrite();
 
+        System.out.print("Serialized path looks like ");
+        int p = 0;
+        for (byte b : serializedPath) {
+            if (p % ServerConstants.BUCKET_SIZE == 0) {
+                System.out.println();
+            }
+
+            System.out.print(b);
+
+            p++;
+        }
+        System.out.println();
         // Write path to server
         server.writePath(pathID, serializedPath);
 

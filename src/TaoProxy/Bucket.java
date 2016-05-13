@@ -7,7 +7,9 @@ import com.google.common.primitives.Longs;
 import java.io.IOException;
 import java.io.ObjectStreamException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -48,7 +50,11 @@ public class Bucket implements Serializable {
         Block[] temp = bucket.getBlocks();
 
         for (int i = 0; i < mBlocks.length; i++) {
-            if (temp[i] != null) {
+            // BlockID 0 will represent an uninitialized block and will not be used for actual block IDs
+            // This is to deal with initialization
+            // TODO: Check the bitmap?
+            if (bucket.checkBlockFilled(i) && temp[i] != null) {
+                System.out.println("Going to mark a block as filled");
                 mBlocks[i] = new Block(temp[i]);
                 markBlockFilled(i);
             } else {
@@ -84,6 +90,7 @@ public class Bucket implements Serializable {
         int mask = ~(1 << index);
         mBucketBitmap = mBucketBitmap & mask;
     }
+
 
     public boolean checkBlockFilled(int index) {
         int mask = 1 << index;
@@ -127,6 +134,7 @@ public class Bucket implements Serializable {
         // Search bucket to see if there is any remaining slots to add block
         for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
             if (!checkBlockFilled(i)) {
+                System.out.println("----------- This is me adding block with id " + block.getBlockID());
                 mBlocks[i] = block;
                 markBlockFilled(i);
                 return true;
@@ -145,15 +153,38 @@ public class Bucket implements Serializable {
         return mBlocks;
     }
 
+    public List<Block> getFilledBlocks() {
+        ArrayList<Block> returnList = new ArrayList<>();
+        mRWL.readLock().lock();
+        for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+            if (checkBlockFilled(i)) {
+                System.out.println("I think the block is filled");
+                // TODO: return copy?
+                returnList.add(mBlocks[i]);
+            }
+        }
+        mRWL.readLock().unlock();
+
+        return returnList;
+    }
+
     public byte[] getDataFromBlock(long blockID) {
         // Get read lock
         mRWL.readLock().lock();
         try {
-
+            for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+                if (checkBlockFilled(i)) {
+                    if (mBlocks[i].getBlockID() == blockID) {
+                        System.out.println("~~~~ Found the block, returning data");
+                        return mBlocks[i].getData();
+                    }
+                }
+            }
         } finally {
             mRWL.readLock().unlock();
         }
 
+        System.out.println("~~~~ Could not find the block, returning null");
         return null;
     }
 
@@ -201,12 +232,20 @@ public class Bucket implements Serializable {
      * @param blockID
      * @param data
      */
-    public void modifyBlock(long blockID, byte[] data) {
-        for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
-            if (mBlocks[i].getBlockID() == blockID) {
-                mBlocks[i].setData(data);
+    public boolean modifyBlock(long blockID, byte[] data) {
+        boolean writeStatus = false;
+        try {
+            mRWL.writeLock().lock();
+            for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+                if (checkBlockFilled(i) && mBlocks[i].getBlockID() == blockID) {
+                    mBlocks[i].setData(data);
+                    writeStatus = true;
+                }
             }
+        } finally {
+            mRWL.writeLock().unlock();
         }
+        return writeStatus;
     }
 
     public static int getBucketSize() {

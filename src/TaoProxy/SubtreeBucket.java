@@ -30,9 +30,12 @@ public class SubtreeBucket extends Bucket {
      */
     public void initializeRight(Bucket bucket) {
         if (mRight == null) {
+            System.out.println("Going right in subtree bucket");
             if (bucket != null) {
+                System.out.println("Somehow the bucket isn't null");
                 mRight = new SubtreeBucket(bucket);
             } else {
+                System.out.println("the bucket is null");
                 mRight = new SubtreeBucket();
             }
         }
@@ -44,11 +47,30 @@ public class SubtreeBucket extends Bucket {
      */
     public void initializeLeft(Bucket bucket) {
         if (mLeft == null) {
+            System.out.println("Going left in subtree bucket");
             if (bucket != null) {
+                System.out.println("Somehow the bucket isn't null");
                 mLeft = new SubtreeBucket(bucket);
             } else {
+                System.out.println("the bucket is null");
                 mLeft = new SubtreeBucket();
             }
+        }
+    }
+
+    public void setRight(Bucket b) {
+        if (b == null) {
+            mRight = null;
+        } else {
+            mRight = new SubtreeBucket(b);
+        }
+    }
+
+    public void setLeft(Bucket b) {
+        if (b == null) {
+            mLeft = null;
+        } else {
+            mLeft = new SubtreeBucket(b);
         }
     }
 

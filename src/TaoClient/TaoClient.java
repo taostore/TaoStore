@@ -24,7 +24,7 @@ import java.util.Arrays;
 public class TaoClient implements Client {
     private InetSocketAddress mProxyAddress;
     private InetSocketAddress mClientAddress;
-
+    private static int mRequestID = 0;
     /**
      * @brief Default constructor
      */
@@ -34,75 +34,24 @@ public class TaoClient implements Client {
         mClientAddress = new InetSocketAddress("localhost", 12346);
     }
 
+    /**
+     * @brief Constructor that takes in an address for the proxy
+     * @param proxyAddress
+     * @param proxyPort
+     */
     public TaoClient(String proxyAddress, int proxyPort) {
         mProxyAddress = new InetSocketAddress(proxyAddress, proxyPort);
+        mClientAddress = new InetSocketAddress("localhost", 12346);
     }
 
     @Override
     public byte[] read(long blockID) {
         try {
-            // Create object that will be used as a condition
-            Object wait = new Object();
+            // Send read request
+            ProxyResponse response = sendRequest(ClientRequest.READ, blockID, null);
 
-            // Create an empty response
-            ProxyResponse proxyResponse = new ProxyResponse();
-
-            // Start a server socket to listen for incoming response to this request
-            // TODO: Might come out of order
-            Runnable r = () -> {
-                try {
-                    // Create server socket
-                    ServerSocket serverSocket = new ServerSocket(mClientAddress.getPort());
-                    Socket clientServerSocket = serverSocket.accept();
-                    InputStream input = clientServerSocket.getInputStream();
-
-                    byte[] responseBytes = new byte[ProxyResponse.getProxyResponseSize()];
-
-                    input.read(responseBytes, 0, responseBytes.length);
-
-                    byte[] protocolBytes = Arrays.copyOfRange(responseBytes, 0, 4);
-                    int messageType = Ints.fromByteArray(protocolBytes);
-
-                    if (messageType == Constants.PROXY_RESPONSE) {
-                        proxyResponse.initialize(Arrays.copyOfRange(responseBytes, 4, responseBytes.length));
-                    }
-
-                    input.close();
-                    clientServerSocket.close();
-                    serverSocket.close();
-                    synchronized (wait) {
-                        wait.notifyAll();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            };
-            new Thread(r).start();
-
-            // Get proxy name and port and connect to server
-            Socket clientSocket = new Socket(mProxyAddress.getHostName(), mProxyAddress.getPort());
-
-            // Create output stream
-            DataOutputStream output = new DataOutputStream(clientSocket.getOutputStream());
-
-            // Create request
-            // TODO: generate random request ID
-            long requestID = 0;
-            ClientRequest request = new ClientRequest(blockID, ClientRequest.READ, requestID, mClientAddress);
-
-            // Send request to proxy
-            output.write(request.serializeAsMessage());
-            clientSocket.close();
-
-            // Close streams
-            output.close();
-
-            // Wait until response
-            synchronized (wait) {
-                wait.wait();
-            }
-
-            return proxyResponse.getReturnData();
+            // Return read data
+            return response.getReturnData();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -113,46 +62,25 @@ public class TaoClient implements Client {
     @Override
     public boolean write(long blockID, byte[] data) {
         try {
+            // Send write request
+            ProxyResponse response = sendRequest(ClientRequest.WRITE, blockID, data);
+            return response.getWriteStatus();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public ProxyResponse sendRequest(int type, long blockID, byte[] data) {
+        try {
+            // Create object that will be used as a wait condition
             Object wait = new Object();
 
+            // Create an empty response
             ProxyResponse proxyResponse = new ProxyResponse();
-            Runnable r = () -> {
-                try {
-                    System.out.println("Client waiting for response");
-                    ServerSocket serverSocket = new ServerSocket(mClientAddress.getPort());
-                    Socket clientServerSocket = serverSocket.accept();
-                    System.out.println("Client got response");
-                    InputStream input = clientServerSocket.getInputStream();
 
-                    byte[] protocolBytes = new byte[4];
-                    input.read(protocolBytes, 0, protocolBytes.length);
-                    int messageType = Ints.fromByteArray(protocolBytes);
-                    System.out.println("The messageType is " + messageType);
-                    if (messageType == Constants.PROXY_RESPONSE) {
-                        byte[] responseBytes = new byte[ProxyResponse.getProxyResponseSize()];
-                        input.read(responseBytes);
-
-                        System.out.print("Client says message ");
-                        for (byte b : responseBytes) {
-                            System.out.print(b);
-                        }
-                        System.out.println();
-
-                        proxyResponse.initialize(responseBytes);
-                        System.out.println("In here doe " + proxyResponse.getClientRequestID());
-                    }
-
-                    input.close();
-                    clientServerSocket.close();
-                    serverSocket.close();
-                    synchronized (wait) {
-                        wait.notifyAll();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            };
-            new Thread(r).start();
+            // Listen for a response to this request
+            listenForResponse(wait, proxyResponse);
 
             // Get proxy name and port
             Socket clientSocket = new Socket(mProxyAddress.getHostName(), mProxyAddress.getPort());
@@ -162,14 +90,21 @@ public class TaoClient implements Client {
 
             // Create request
             // TODO: generate random request ID
-            long requestID = 3;
-            ClientRequest request = new ClientRequest(blockID, ClientRequest.WRITE, requestID, data, mClientAddress);
+            long requestID = mRequestID;
+            mRequestID++;
+            // Create client request
+            ClientRequest request = null;
+            if (type == ClientRequest.READ) {
+                request = new ClientRequest(blockID, ClientRequest.READ, requestID, mClientAddress);
+            } else if (type == ClientRequest.WRITE) {
+                 request = new ClientRequest(blockID, ClientRequest.WRITE, requestID, data, mClientAddress);
+            }
 
             // Send request to proxy
             output.write(request.serializeAsMessage());
-            clientSocket.close();
 
-            // Close streams
+            // Close streams and ports
+            clientSocket.close();
             output.close();
 
             // Wait until response
@@ -177,11 +112,44 @@ public class TaoClient implements Client {
                 wait.wait();
             }
 
-            return proxyResponse.getWriteStatus();
+            // Return proxy response
+            return proxyResponse;
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return false;
+
+        return null;
+    }
+
+    public void listenForResponse(Object obj, ProxyResponse proxyResponse) {
+        // TODO: Might come out of order
+        Runnable r = () -> {
+            try {
+                ServerSocket serverSocket = new ServerSocket(mClientAddress.getPort());
+                Socket clientServerSocket = serverSocket.accept();
+                InputStream input = clientServerSocket.getInputStream();
+
+                byte[] protocolBytes = new byte[4];
+                input.read(protocolBytes, 0, protocolBytes.length);
+                int messageType = Ints.fromByteArray(protocolBytes);
+                if (messageType == Constants.PROXY_RESPONSE) {
+                    byte[] responseBytes = new byte[ProxyResponse.getProxyResponseSize()];
+                    input.read(responseBytes);
+
+                    proxyResponse.initialize(responseBytes);
+                }
+
+                input.close();
+                clientServerSocket.close();
+                serverSocket.close();
+                synchronized (obj) {
+                    obj.notifyAll();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        };
+        new Thread(r).start();
     }
 
     public static void main(String[] args) {

@@ -5,7 +5,7 @@ package TaoProxy;
  */
 public class Constants {
     public static final int BUCKET_SIZE = 4;
-    public static final int WRITE_BACK_THRESHOLD = 46;
+    public static final int WRITE_BACK_THRESHOLD = 2;
     public static final int BLOCK_META_DATA_SIZE = 8;
     public static final int BLOCK_SIZE = 4096;
 
