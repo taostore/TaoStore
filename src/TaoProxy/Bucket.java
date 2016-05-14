@@ -54,7 +54,7 @@ public class Bucket implements Serializable {
             // This is to deal with initialization
             // TODO: Check the bitmap?
             if (bucket.checkBlockFilled(i) && temp[i] != null) {
-                System.out.println("Going to mark a block as filled");
+                System.out.println("Going to mark a block as filled with id " + temp[i].getBlockID());
                 mBlocks[i] = new Block(temp[i]);
                 markBlockFilled(i);
             } else {
@@ -184,7 +184,7 @@ public class Bucket implements Serializable {
             mRWL.readLock().unlock();
         }
 
-        System.out.println("~~~~ Could not find the block, returning null");
+       // System.out.println("~~~~ Could not find the block, returning null");
         return null;
     }
 

@@ -56,75 +56,64 @@ public class TaoClientTest {
         boolean writeStatus = client.write(blockID, dataToWrite);
         assertTrue(writeStatus);
 
-
-
-        // Wait 1 second for the server and proxy to come up
-//        try {
-//            Thread.sleep(5000);
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
         System.out.println("\n\n");
 
+        // Send write request
+        blockID = 6;
+        byte[] dataToWrite1 = new byte[Constants.BLOCK_SIZE];
+        Arrays.fill(dataToWrite1, (byte) blockID);
+        System.out.println("@@@@@@@@@@@@ Going to send write request for " + blockID);
+        boolean writeStatus1 = client.write(blockID, dataToWrite1);
+        assertTrue(writeStatus1);
+
+        System.out.println("\n\n");
+
+
+        blockID = 3;
         System.out.println("@@@@@@@@@@@@ Going to send read request for " + blockID);
         byte[] s = client.read(blockID);
 
         System.out.println("Read request for blockID " + blockID + " has data:");
-//        try {
-//            Thread.sleep(3000);
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
 
         for (byte b : s) {
             System.out.print(b);
         }
         System.out.println("\n\n\n\n");
-//
-//        blockID = 5;
-//        byte[] dataToWrite1 = new byte[Constants.BLOCK_SIZE];
-//        Arrays.fill(dataToWrite1, (byte) blockID);
-//        System.out.println("Going to send write request for " + blockID);
-//        writeStatus = client.write(blockID, dataToWrite1);
-//        assertTrue(writeStatus);
-//
-//        System.out.println("\n");
-//
-//        System.out.println("Read request for blockID " + blockID + " has data:");
-//        byte[] w = client.read(blockID);
-//
-//        System.out.println("Read request for blockID " + blockID + " has data:");
-//        for (byte b : w) {
-//            System.out.print(b);
-//        }
-//        System.out.println("\n\n\n\n");
-//
-//        blockID = 3;
-//        System.out.println("Going to send read request for " + blockID);
-//        byte[] t = client.read(blockID);
-//
-//        System.out.println("Read request for blockID " + blockID + " has data:");
-//        for (byte b : t) {
-//            System.out.print(b);
-//        }
-//        System.out.println();
-//
+
+        System.out.println("\n\n");
+
+        blockID = 6;
+        System.out.println("@@@@@@@@@@@@ Going to send read request for " + blockID);
+        byte[] y = client.read(blockID);
+
+        System.out.println("Read request for blockID " + blockID + " has data:");
 
 
+        for (byte b : y) {
+            System.out.print(b);
+        }
+        System.out.println("\n\n\n\n");
 
-//        for (int i = 0; i < 1000; i++) {
-//            //Runnable testRunnable = () -> {
-//                byte[] z = client.read(blockID);
-//
-//                System.out.println("11 Read request for blockID " + blockID + " has data:");
-//                for (byte b : z) {
-//                    System.out.print(b);
-//                }
-//                System.out.println();
-//                assertTrue(Arrays.equals(dataToWrite, z));
-//           // };
-//          //  new Thread(testRunnable).start();
-//        }
-        // Create a read request
+        for (int i = 0; i < 1000; i++) {
+            if (i % 2 == 0) {
+                blockID = 3;
+            } else {
+                blockID = 6;
+            }
+            byte[] z = client.read(blockID);
+
+            System.out.println("11 Read request for blockID " + blockID + " has data:");
+            for (byte b : z) {
+                System.out.print(b);
+            }
+            System.out.println();
+
+            if (i % 2 == 0) {
+                assertTrue(Arrays.equals(dataToWrite, z));
+            } else {
+                assertTrue(Arrays.equals(dataToWrite1, z));
+            }
+        }
+
     }
 }

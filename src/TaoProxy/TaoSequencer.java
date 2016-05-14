@@ -90,12 +90,15 @@ public class TaoSequencer implements Sequencer{
 //                System.out.println();
 
                 // Send ProxyResponse to client
+
                 InetSocketAddress address = req.getClientAddress();
                 Socket socket = new Socket(address.getHostName(), address.getPort());
+
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream());
                 output.write(response.serializeAsMessage());
                 output.close();
-
+                socket.close();
+        //        Thread.sleep(100);
                 // Remove request from request map
                 mRequestMap.remove(req);
             } catch (Exception e) {

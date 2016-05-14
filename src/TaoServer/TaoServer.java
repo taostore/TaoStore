@@ -243,80 +243,119 @@ public class TaoServer {
                     // Start listening for other connections
                     channel.accept(null, this);
 
-                    // Create byte buffer to use to read incoming message
-                    ByteBuffer byteBuffer = ByteBuffer.allocate( Constants.MAX_BYTE_BUFFER_SERVER );
+                    // Create byte buffer to use to read incoming message type and size
+                    ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
 
                     // Asynchronously read message
-                    ch.read(byteBuffer, null, new CompletionHandler<Integer, Void>() {
+                    ch.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
                             System.out.println("Hey just read a proxy request");
 
-                            // Flip byte buffer so we can read from it
-                            byteBuffer.flip();
+                            // Flip buffer for reading
+                            messageTypeAndSize.flip();
 
-                            // Get the bytes from the message that represent what type of message it is
+                            // Parse the message type and size from server
                             byte[] messageTypeBytes = new byte[4];
-                            byteBuffer.get(messageTypeBytes);
+                            byte[] messageLengthBytes = new byte[4];
 
-                            // TODO: decryption of messageTypeBytes
-                            // Find out what type of message we have received
+                            messageTypeAndSize.get(messageTypeBytes);
+                            messageTypeAndSize.get(messageLengthBytes);
+
                             int messageType = Ints.fromByteArray(messageTypeBytes);
+                            int messageLength = Ints.fromByteArray(messageLengthBytes);
 
-                            // Serve request
-                            if (messageType == Constants.PROXY_READ_REQUEST) {
-                                // Get bytes for proxy read request
-                                byte[] requestBytes = new byte[ProxyRequest.getProxyReadRequestSize()];
-                                byteBuffer.get(requestBytes);
+                            ByteBuffer message = ByteBuffer.allocate(messageLength);
 
-                                // TODO: decryption of requestBytes
-                                // Create proxy read request from bytes
-                                ProxyRequest proxyReq = new ProxyRequest(requestBytes);
-
-                                // Read the request path
-                                byte[] returnPathData = readPath(proxyReq.getPathID());
-
-                                // Create path based on bytes
-                                Path returnPath = new Path(proxyReq.getPathID(), returnPathData);
-
-                                // Create a server response
-                                ServerResponse readResponse = new ServerResponse(returnPath);
-
-                                // TODO: Encrypt the server response?
-                                // Send response to proxy
-                                ByteBuffer returnMessage = ByteBuffer.wrap(readResponse.serializeAsMessage());
-                                //ByteBuffer returnMessage = ByteBuffer.allocate(readResponse.serializeAsMessage().length);
-                                //returnMessage.put(readResponse.serializeAsMessage());
-                                //returnMessage.flip();
-                                System.out.println("Returning message of size " + readResponse.serializeAsMessage().length);
-                                //System.out.println("How much is remaining? " + returnMessage.remaining());
-                                ch.write(returnMessage);
-                            } else if (messageType == Constants.PROXY_WRITE_REQUEST) {
-                                // Get bytes for proxy write request
-                                byte[] requestBytes = new byte[ProxyRequest.getProxyWriteRequestSize()];
-                                byteBuffer.get(requestBytes);
-
-                                // TODO: decryption of requestBytes
-                                // Create proxy write request from bytes
-                                ProxyRequest proxyReq = new ProxyRequest(requestBytes);
-
-                                // Write each path
-                                boolean success = true;
-                                for (Path p : proxyReq.getPathList()) {
-                                    if (! writePath(p.getID(), p.serializeForDiskWrite())) {
-                                        success = false;
+                            ch.read(message, null, new CompletionHandler<Integer, Void>() {
+                                @Override
+                                public void completed(Integer result, Void attachment) {
+                                    while (message.remaining() > 0) {
+                                        ch.read(message, null, this);
+                                        return;
                                     }
+
+                                    message.flip();
+
+                                    byte[] requestBytes = new byte[messageLength];
+                                    message.get(requestBytes);
+
+                                    // TODO: decryption of requestBytes
+                                    // Create proxy read request from bytes
+                                    ProxyRequest proxyReq = new ProxyRequest(requestBytes);
+
+                                    ByteBuffer messageTypeAndLengthBuffer = null;
+                                    byte[] serializedResponse = null;
+                                    if (messageType == Constants.PROXY_READ_REQUEST) {
+                                        // Read the request path
+                                        byte[] returnPathData = readPath(proxyReq.getPathID());
+
+                                        // Create path based on bytes
+                                        Path returnPath = new Path(proxyReq.getPathID(), returnPathData);
+
+                                        // Create a server response
+                                        ServerResponse readResponse = new ServerResponse(returnPath);
+
+                                        // TODO: Encrypt the server response?
+                                        // Send response to proxy
+                                        serializedResponse = readResponse.serialize();
+
+                                        byte[] messageTypeBytes = Ints.toByteArray(Constants.SERVER_RESPONSE);
+                                        byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
+
+                                        byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
+                                        messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
+
+                                        // First we send the message type to the server along with the size of the message
+                                        System.out.println("Returning message of size " + readResponse.serializeAsMessage().length);
+
+                                    } else if (messageType == Constants.PROXY_WRITE_REQUEST) {
+                                        // Write each path
+                                        boolean success = true;
+                                        for (Path p : proxyReq.getPathList()) {
+                                            if (! writePath(p.getID(), p.serializeForDiskWrite())) {
+                                                success = false;
+                                            }
+                                        }
+
+                                        // Create a server response
+                                        ServerResponse writeResponse = new ServerResponse();
+                                        writeResponse.setWriteStatus(success);
+
+                                        // TODO: Encrypt the server response?
+                                        // Send response to proxy
+                                        serializedResponse = writeResponse.serialize();
+
+                                        // First we send the message type to the server along with the size of the message
+                                        byte[] messageTypeBytes = Ints.toByteArray(Constants.SERVER_RESPONSE);
+                                        byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
+
+                                        byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
+                                        messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
+                                    }
+
+                                    ByteBuffer returnMessageBuffer = ByteBuffer.wrap(serializedResponse);
+                                    ch.write(messageTypeAndLengthBuffer, null, new CompletionHandler<Integer, Void>() {
+
+                                        @Override
+                                        public void completed(Integer result, Void attachment) {
+                                            ch.write(returnMessageBuffer);
+                                        }
+
+                                        @Override
+                                        public void failed(Throwable exc, Void attachment) {
+
+                                        }
+                                    });
+
+
                                 }
 
-                                // Create a server response
-                                ServerResponse writeResponse = new ServerResponse();
-                                writeResponse.setWriteStatus(success);
-
-                                // TODO: Encrypt the server response?
-                                // Send response to proxy
-                                ByteBuffer returnMessage = ByteBuffer.wrap(writeResponse.serializeAsMessage());
-                                ch.write(returnMessage);
-                            }
+                                @Override
+                                public void failed(Throwable exc, Void attachment) {
+                                    // TODO: Implement?
+                                }
+                            });
                         }
 
                         @Override

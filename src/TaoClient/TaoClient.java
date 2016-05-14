@@ -145,6 +145,7 @@ public class TaoClient implements Client {
                 synchronized (obj) {
                     obj.notifyAll();
                 }
+                return;
             } catch (Exception e) {
                 e.printStackTrace();
             }

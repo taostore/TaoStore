@@ -2,10 +2,7 @@ package TaoProxy;
 
 import com.google.common.collect.Multiset;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.PriorityQueue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -52,21 +49,31 @@ public class TaoSubtree implements Subtree {
                 // Attempt to initialize right bucket
                 currentBucket.initializeRight(path.getBucket(i));
 
+                // Add blocks in bucket into map
+                List<Block> blocksToAdd = currentBucket.getFilledBlocks();
+                for (Block b : blocksToAdd) {
+                    System.out.println("Adding block " + b.getBlockID() + " to the blockid map");
+                    mBlockMap.put(b.getBlockID(), currentBucket);
+                }
+
                 // Move to next bucket
                 currentBucket = currentBucket.getRight();
             } else {
                 // Attempt to initialize left bucket
                 currentBucket.initializeLeft(path.getBucket(i));
 
+                // Add blocks in bucket into map
+                List<Block> blocksToAdd = currentBucket.getFilledBlocks();
+                for (Block b : blocksToAdd) {
+                    System.out.println("Adding block " + b.getBlockID() + " to the blockid map");
+                    mBlockMap.put(b.getBlockID(), currentBucket);
+                }
+
                 // Move to next bucket
                 currentBucket = currentBucket.getLeft();
             }
 
-            // Add blocks in bucket into map
-            Block[] blocksToAdd = path.getBucket(i).getBlocks();
-            for (Block b : blocksToAdd) {
-                mBlockMap.put(b.getBlockID(), currentBucket);
-            }
+
             i++;
         }
     }
@@ -177,11 +184,14 @@ public class TaoSubtree implements Subtree {
         long timestamp = deleteChild(child, pathID, directions, level, minTime, pathReqMultiSet);
 
         // Check if we should delete the child
-        if (timestamp < minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet)) {
+        if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet)) {
+            System.out.println("Deleting because " + timestamp + " < " + minTime);
             // We should delete child, check if it was the right or left child
             if (directions[currentLevel]) {
+                System.out.println("Going to delete the right child for path " + pathID + " at level " + currentLevel);
                 bucket.setRight(null);
             } else {
+                System.out.println("Going to delete the left child for path " + pathID + " at level " + currentLevel);
                 bucket.setLeft(null);
             }
         }
@@ -209,7 +219,11 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public void deleteNodes(long pathID, long minTime, Set<Long> pathReqMultiSet) {
-        System.out.println("OH YEAH DELETE NODES");
+        System.out.println("OH YEAH DELETE NODES WITH TIMESTAMP OF " + minTime + " FOR PATH " + pathID);
+        System.out.println("Paths in multiset:");
+        for (Long l : pathReqMultiSet) {
+            System.out.println("do not delete path " + l);
+        }
         // TODO: need locks?
         // Check if subtree is empty
         if (mRoot == null) {
@@ -220,14 +234,19 @@ public class TaoSubtree implements Subtree {
         // Get the directions for this path
         boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoProxy.TREE_HEIGHT);
 
+
+
         // Try to delete all descendents
         deleteChild(mRoot, pathID, pathDirection, 0, minTime, pathReqMultiSet);
 
         // Check if we can delete root
         // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
         // thus it should be okay to set mRoot to null
-        if (mRoot.getUpdateTime() < minTime && ! pathReqMultiSet.contains(pathID)) {
+        if (mRoot.getUpdateTime() <= minTime && ! pathReqMultiSet.contains(pathID)) {
+            System.out.println("** Deleting the root node too");
             mRoot = null;
+        } else {
+            System.out.println("** Not deleting root node because either " + mRoot.getUpdateTime() + " > " + minTime + " or pathReqMultiSet.contains(" + pathID + ") is " + pathReqMultiSet.contains(pathID));
         }
     }
 

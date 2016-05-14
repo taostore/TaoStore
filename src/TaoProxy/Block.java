@@ -128,6 +128,10 @@ public class Block implements Serializable {
     }
 
 
+    /**
+     * @brief Method to return this block in bytes
+     * @return serialized version of this block
+     */
     public byte[] serialize() {
         byte[] idBytes = Longs.toByteArray(mID);
         return Bytes.concat(idBytes, mData);

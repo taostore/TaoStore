@@ -1,9 +1,8 @@
 package TaoProxy;
 
 import com.google.common.collect.ConcurrentHashMultiset;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Multiset;
-import com.google.common.collect.Sets;
+import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 
 import javax.crypto.KeyGenerator;
@@ -179,66 +178,106 @@ public class TaoProcessor implements Processor {
 
                     // Serialize and encrypt request
                     // TODO: Encrypt request, or maybe not
-                    byte[] requestData = proxyRequest.serializeAsMessage();
+                    byte[] requestData = proxyRequest.serialize();
 
-                    System.out.println("Going to send proxy request to server, requestID " + req.getRequestID());
-                    // Asynchronously send message to server
-                    channel.write(ByteBuffer.wrap(requestData), null, new CompletionHandler<Integer, Void>() {
+
+                    // First we send the message type to the server along with the size of the message
+                    byte[] messageTypeBytes = Ints.toByteArray(Constants.PROXY_READ_REQUEST);
+                    byte[] messageLengthBytes = Ints.toByteArray(requestData.length);
+
+                    ByteBuffer messageType = ByteBuffer.wrap(Bytes.concat(messageTypeBytes, messageLengthBytes));
+
+                    // Asynchronously send message type and length to server
+                    channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
-                            System.out.println("Wrote proxy request to server, going to wait for response, requestID " + req.getRequestID());
-                            // Asynchronously read response from server
-                            ByteBuffer pathInBytes = ByteBuffer.allocate(4 + ServerResponse.getServerResponseSize());
-                            channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
+
+                            // Write the rest of the message to the server
+                            System.out.println("Going to send proxy request to server, requestID " + req.getRequestID());
+
+                            channel.write(ByteBuffer.wrap(requestData), null, new CompletionHandler<Integer, Void>() {
+
                                 @Override
                                 public void completed(Integer result, Void attachment) {
-                                    System.out.println("Got response from server for proxy request, requestID " + req.getRequestID());
-                                    System.out.println("The initial limit is " + pathInBytes.limit());
-                                    System.out.println("How much is remaining " + pathInBytes.remaining());
+                                    System.out.println("Wrote proxy request to server, going to wait for response, requestID " + req.getRequestID());
 
-                                    // TODO: change all reads to be like this
-                                    while (pathInBytes.remaining() > 0) {
-                                        channel.read(pathInBytes);
-                                    }
+                                    // Asynchronously read response type and size from server
+                                    ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
 
+                                    channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
 
-                                    // Flip the byte buffer for reading
-                                    pathInBytes.flip();
+                                        @Override
+                                        public void completed(Integer result, Void attachment) {
+                                            // Flip the byte buffer for reading
+                                            messageTypeAndSize.flip();
 
-                                    //pathInBytes.position(0);
-                                    System.out.println("Limit after the flip is " + pathInBytes.limit());
+                                            // Parse the message type and size from server
+                                            byte[] messageTypeBytes = new byte[4];
+                                            byte[] messageLengthBytes = new byte[4];
 
-                                    // Parse message type from server
-                                    byte[] messageTypeBytes = new byte[4];
-                                    pathInBytes.get(messageTypeBytes, 0, messageTypeBytes.length);
-                                    System.out.println("Limit after the get is " + pathInBytes.limit());
-                                    // TODO: decryption of messageTypeBytes
-                                    // Check message type
-                                    int messageType = Ints.fromByteArray(messageTypeBytes);
+                                            messageTypeAndSize.get(messageTypeBytes);
+                                            messageTypeAndSize.get(messageLengthBytes);
 
-                                    // Server message based on type
-                                    if (messageType == Constants.SERVER_RESPONSE) {
-                                        // Read in message bytes
-                                        byte[] responseData = new byte[ServerResponse.getServerResponseSize()];
-                                        System.out.println("Limit is " + pathInBytes.limit());
-                                        System.out.println("Size of response data is " + responseData.length);
-                                        pathInBytes.get(responseData);
+                                            int messageType = Ints.fromByteArray(messageTypeBytes);
+                                            int messageLength = Ints.fromByteArray(messageLengthBytes);
 
-                                        // Create ServerResponse object based on data
-                                        ServerResponse response = new ServerResponse(responseData);
+                                            // Asynchronously read response from server
+                                            ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
+                                            channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
+                                                @Override
+                                                public void completed(Integer result, Void attachment) {
+                                                    System.out.println("Got response from server for proxy request, requestID " + req.getRequestID());
+                                                    System.out.println("The initial limit is " + pathInBytes.limit());
+                                                    System.out.println("How much is remaining " + pathInBytes.remaining());
 
-                                        // Now that the response has come back, remove one instance of the requested
-                                        // block ID from mPathReqMultiSet
-                                        mPathReqMultiSet.remove(response.getPath().getID());
+                                                    // TODO: change all reads to be like this
+                                                    while (pathInBytes.remaining() > 0) {
+                                                        channel.read(pathInBytes, null, this);
+                                                        return;
+                                                    }
+                                                    // Flip the byte buffer for reading
+                                                    pathInBytes.flip();
 
-                                        // Send response to proxy
-                                        mProxy.onReceiveResponse(req, response, fakeRead);
-                                    }
+                                                    //pathInBytes.position(0);
+                                                    System.out.println("Limit after the flip is " + pathInBytes.limit());
+
+                                                    // Serve message based on type
+                                                    if (messageType == Constants.SERVER_RESPONSE) {
+                                                        // Read in message bytes
+                                                        byte[] responseData = new byte[ServerResponse.getServerResponseSize()];
+                                                        System.out.println("Limit is " + pathInBytes.limit());
+                                                        System.out.println("Size of response data is " + responseData.length);
+                                                        pathInBytes.get(responseData);
+
+                                                        // Create ServerResponse object based on data
+                                                        ServerResponse response = new ServerResponse(responseData);
+
+                                                        // Now that the response has come back, remove one instance of the requested
+                                                        // block ID from mPathReqMultiSet
+                        //                                mPathReqMultiSet.remove(response.getPath().getID());
+
+                                                        // Send response to proxy
+                                                        mProxy.onReceiveResponse(req, response, fakeRead);
+                                                    }
+                                                }
+
+                                                @Override
+                                                public void failed(Throwable exc, Void attachment) {
+                                                    // TODO: Implement?
+                                                }
+                                            });
+                                        }
+
+                                        @Override
+                                        public void failed(Throwable exc, Void attachment) {
+
+                                        }
+                                    });
                                 }
 
                                 @Override
                                 public void failed(Throwable exc, Void attachment) {
-                                    // TODO: Implement?
+
                                 }
                             });
                         }
@@ -309,9 +348,11 @@ public class TaoProcessor implements Processor {
                 // TODO: call this, bucket is changed via flush, foundData. Need to lock bucket?
                 // TODO: only for the first non fake read
                 if (elementDoesExist || ! isFirstRequest) {
+                    System.out.println("BlockID " + req.getBlockID() + " should exist somewhere");
                     // The element should exist somewhere
                     foundData = getDataFromBlock(currentRequest.getBlockID());
                 } else {
+                    System.out.println("BlockID " + req.getBlockID() + " does not yet exist");
                     // The element has never been created before
                     foundData = new byte[Constants.BLOCK_SIZE];
                 }
@@ -352,8 +393,13 @@ public class TaoProcessor implements Processor {
             // Assign block with blockID == req.getBlockID() to a new random path in position map
             Random r = new Random();
             int newPathID = r.nextInt(1 << TaoProxy.TREE_HEIGHT);
+            System.out.println("%%%% Assigning blockID " + req.getBlockID() + " to path " + newPathID);
             mPositionMap.setBlockPosition(req.getBlockID(), newPathID);
         }
+
+        // Now that the response has come back, remove one instance of the requested
+        // block ID from mPathReqMultiSet
+        mPathReqMultiSet.remove(resp.getPath().getID());
     }
 
     /**
@@ -362,17 +408,28 @@ public class TaoProcessor implements Processor {
      * @return
      */
     public byte[] getDataFromBlock(long blockID) {
+        System.out.println("$$ Trying to get data for block " + blockID);
         while (true) {
             Bucket targetBucket = mSubtree.getBucketWithBlock(blockID);
             if (targetBucket != null) {
+                System.out.println("Target bucket isn't null");
                 byte[] data = targetBucket.getDataFromBlock(blockID);
                 if (data != null) {
+                    System.out.println("$$ Returning data for block " + blockID);
                     return data;
+                } else {
+                    System.out.println("But bucket does not have the data we want");
+                    System.exit(1);
                 }
             } else {
+                System.out.println("Cannot find in subtree");
                 Block targetBlock = mStash.getBlock(blockID);
                 if (targetBlock != null) {
+                    System.out.println("$$ Returning data for block " + blockID);
                     return targetBlock.getData();
+                } else {
+                    System.out.println("Cannot find in subtree or stash");
+                    System.exit(0);
                 }
             }
         }
@@ -489,6 +546,7 @@ public class TaoProcessor implements Processor {
         ArrayList<Block> blocksToFlush = new ArrayList<>();
 
         blocksToFlush.addAll(mStash.getAllBlocks());
+        System.out.println("Getting the buckets in path " + pathID);
         Bucket[] buckets = mSubtree.getPath(pathID).getBuckets();
        // System.out.println("! The subtree had " + buckets.length + " buckets");
         for (Bucket b : buckets) {
@@ -555,12 +613,16 @@ public class TaoProcessor implements Processor {
 
         // Prune the mRequestMap to remove empty lists so it doesn't get to large
         mRequestMapLock.writeLock().lock();
-        for (Long blockID : mRequestMap.keySet()) {
+        Set<Long> copy = new HashSet<>(mRequestMap.keySet());
+        for (Long blockID : copy) {
             if (mRequestMap.get(blockID).isEmpty()) {
                 mRequestMap.remove(blockID);
             }
         }
         mRequestMapLock.writeLock().unlock();
+
+
+        System.out.println("## DOING THE WRITEBACK");
 
         // Save path IDs that we will be popping off
         long[] writePathIDs = new long[Constants.WRITE_BACK_THRESHOLD];
@@ -575,7 +637,7 @@ public class TaoProcessor implements Processor {
 
         // TODO: encrypt
         ProxyRequest writebackRequest = new ProxyRequest(ProxyRequest.WRITE, writeBackPaths);
-        byte[] encryptedWriteBackPaths = writebackRequest.serializeAsMessage();
+        byte[] encryptedWriteBackPaths = writebackRequest.serialize();
 
         try {
             // Write paths to server, wait for response
@@ -588,56 +650,100 @@ public class TaoProcessor implements Processor {
             channel.connect(hostAddress, null, new CompletionHandler<Void, Void>() {
                 @Override
                 public void completed(Void result, Void attachment) {
+
+                    // First we send the message type to the server along with the size of the message
+                    byte[] messageTypeBytes = Ints.toByteArray(Constants.PROXY_WRITE_REQUEST);
+                    byte[] messageLengthBytes = Ints.toByteArray(encryptedWriteBackPaths.length);
+
+                    ByteBuffer messageType = ByteBuffer.wrap(Bytes.concat(messageTypeBytes, messageLengthBytes));
+
                     // Asynchronously write to server
-                    channel.write(ByteBuffer.wrap(encryptedWriteBackPaths), null, new CompletionHandler<Integer, Void>() {
+                    channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
-                            // Asynchronously read response from server
-                            ByteBuffer pathInBytes = ByteBuffer.allocate(4 + ServerResponse.getServerResponseSize());
-                            channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
+                            // Now we send the rest of message to the server
+                            ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
+
+                            // Asynchronously write to server
+                            channel.write(message, null, new CompletionHandler<Integer, Void>() {
                                 @Override
                                 public void completed(Integer result, Void attachment) {
-                                    // Flip the byte buffer for reading
-                                    pathInBytes.flip();
+                                    // Asynchronously read response type and size from server
+                                    ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
 
-                                    // Parse response from server
-                                    byte[] messageTypeBytes = new byte[4];
-                                    pathInBytes.get(messageTypeBytes, 0, messageTypeBytes.length);
+                                    channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
 
-                                    // TODO: decryption of messageTypeBytes
-                                    // Get the type of message
-                                    int messageType = Ints.fromByteArray(messageTypeBytes);
+                                        @Override
+                                        public void completed(Integer result, Void attachment) {
+                                            // Flip the byte buffer for reading
+                                            messageTypeAndSize.flip();
 
-                                    // Serve the response based on the message type
-                                    if (messageType == Constants.SERVER_RESPONSE) {
-                                        // Read in the bytes for the response
-                                        byte[] responseData = new byte[ServerResponse.getServerResponseSizeWrite()];
-                                        pathInBytes.get(responseData);
+                                            // Parse the message type and size from server
+                                            byte[] messageTypeBytes = new byte[4];
+                                            byte[] messageLengthBytes = new byte[4];
 
-                                        // Create ServerResponse based on data
-                                        ServerResponse response = new ServerResponse(responseData);
+                                            messageTypeAndSize.get(messageTypeBytes);
+                                            messageTypeAndSize.get(messageLengthBytes);
 
-                                        // Check to see if the write succeeded or not
-                                        if (response.getWriteStatus()) {
-                                            // Iterate through every path that was written, check if there are any nodes
-                                            // we can delete
-                                            for (Long pathID : writePathIDs) {
-                                                // Upon response, delete all nodes in subtree whose timestamp
-                                                // is <= timeStamp, and are not in mPathReqMultiSet
-                                                // TODO: check if shallow or deep copy
-                                                mSubtree.deleteNodes(pathID, finalWriteBackTime, mPathReqMultiSet.elementSet());
+                                            int messageType = Ints.fromByteArray(messageTypeBytes);
+                                            int messageLength = Ints.fromByteArray(messageLengthBytes);
+
+                                            if (messageType == Constants.SERVER_RESPONSE) {
+                                                ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
+                                                channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
+
+                                                    @Override
+                                                    public void completed(Integer result, Void attachment) {
+                                                        while(messageResponse.remaining() > 0) {
+                                                            channel.read(messageResponse);
+                                                        }
+
+                                                        messageResponse.flip();
+
+                                                        byte[] responseData = new byte[messageLength];
+                                                        messageResponse.get(responseData);
+
+                                                        // Create ServerResponse based on data
+                                                        ServerResponse response = new ServerResponse(responseData);
+
+                                                        // Check to see if the write succeeded or not
+                                                        if (response.getWriteStatus()) {
+                                                            // Iterate through every path that was written, check if there are any nodes
+                                                            // we can delete
+                                                            for (Long pathID : writePathIDs) {
+                                                                // Upon response, delete all nodes in subtree whose timestamp
+                                                                // is <= timeStamp, and are not in mPathReqMultiSet
+                                                                // TODO: check if shallow or deep copy
+                                                                Set<Long> set = new HashSet<>();
+                                                                for (Long l : mPathReqMultiSet.elementSet()) {
+                                                                    set.add(l);
+                                                                }
+                                                                mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
+                                                            }
+                                                        }
+                                                    }
+
+                                                    @Override
+                                                    public void failed(Throwable exc, Void attachment) {
+
+                                                    }
+                                                });
                                             }
                                         }
-                                    }
+
+                                        @Override
+                                        public void failed(Throwable exc, Void attachment) {
+
+                                        }
+                                    });
                                 }
 
                                 @Override
                                 public void failed(Throwable exc, Void attachment) {
-                                    // TODO: Implement?
+
                                 }
                             });
                         }
-
                         @Override
                         public void failed(Throwable exc, Void attachment) {
                             // TODO: Implement?
