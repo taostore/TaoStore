@@ -25,11 +25,6 @@ public class Block implements Serializable {
         mData = new byte[Constants.BLOCK_SIZE];
     }
 
-    public Block(boolean placeholder) {
-        mID = -1;
-        mData = null;
-    }
-
     /**
      * @brief Constructor that takes in a block ID
      * @param blockID
@@ -82,7 +77,11 @@ public class Block implements Serializable {
      * @param data
      */
     public void setData(byte[] data) {
-        System.arraycopy(data, 0, mData, 0, Constants.BLOCK_SIZE);
+        if (data != null) {
+            System.arraycopy(data, 0, mData, 0, Constants.BLOCK_SIZE);
+        } else {
+            mData = null;
+        }
     }
 
     /**
@@ -126,7 +125,6 @@ public class Block implements Serializable {
         // TODO: add data?
         return Objects.hash(mID);
     }
-
 
     /**
      * @brief Method to return this block in bytes

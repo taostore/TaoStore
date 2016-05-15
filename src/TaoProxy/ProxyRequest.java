@@ -4,6 +4,7 @@ import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -22,8 +23,8 @@ public class ProxyRequest {
     // If mType == 0, this is the path that we are interested in reading
     private long mReadPathID;
 
-    // If mType == 1, this a list of paths that we wish to write to server
-    private ArrayList<Path> mPaths;
+    private int mPathSize;
+    private byte[] mDataToWrite;
 
     /**
      * @brief Default constructor
@@ -31,7 +32,8 @@ public class ProxyRequest {
     public ProxyRequest() {
         mType = -1;
         mReadPathID = -1;
-        mPaths = new ArrayList<>();
+        mPathSize = -1;
+        mDataToWrite = null;
     }
 
     /**
@@ -42,18 +44,21 @@ public class ProxyRequest {
     public ProxyRequest(int type, long pathID) {
         mType = type;
         mReadPathID = pathID;
-        mPaths = null;
+        mPathSize = -1;
+        mDataToWrite = null;
     }
 
     /**
      * @brief Constructor for a ProxyRequest of type WRITE
      * @param type
-     * @param paths
+     * @param pathSize
+     * @param dataToWrite
      */
-    public ProxyRequest(int type, ArrayList<Path> paths) {
+    public ProxyRequest(int type, int pathSize, byte[] dataToWrite) {
         mType = type;
         mReadPathID = -1;
-        mPaths = paths;
+        mPathSize = pathSize;
+        mDataToWrite = dataToWrite;
     }
 
     /**
@@ -65,14 +70,21 @@ public class ProxyRequest {
 
         if (mType == ProxyRequest.READ) {
             mReadPathID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 4, 12));
-            mPaths = null;
+            mPathSize = -1;
+            mDataToWrite = null;
         } else if (mType == ProxyRequest.WRITE) {
+            // TODO: Change this to not need paths anymore
             mReadPathID = -1;
-            mPaths = new ArrayList<>();
+            mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 4, 8));
 
-            int pathSize = Path.getPathSize();
-            for (int i = 0; i < Constants.WRITE_BACK_THRESHOLD; i++) {
-                mPaths.add(new Path(Arrays.copyOfRange(serializedData, 4 + pathSize * i, 4 + pathSize + pathSize * i)));
+            int serializedIndex = 8;
+            int dataToWriteIndex = 0;
+            mDataToWrite = new byte[serializedData.length - 8];
+
+            while (serializedIndex < serializedData.length) {
+                System.arraycopy(serializedData, serializedIndex, mDataToWrite, dataToWriteIndex, mPathSize);
+                serializedIndex += mPathSize;
+                dataToWriteIndex += mPathSize;
             }
         }
     }
@@ -81,12 +93,16 @@ public class ProxyRequest {
         return mType;
     }
 
+    public int getPathSize() {
+        return mPathSize;
+    }
+
     public long getPathID() {
         return mReadPathID;
     }
 
-    public List<Path> getPathList() {
-        return mPaths;
+    public byte[] getDataToWrite() {
+        return mDataToWrite;
     }
 
     public static int getProxyReadRequestSize() {
@@ -111,11 +127,9 @@ public class ProxyRequest {
             returnData = Bytes.concat(typeBytes, pathBytes);
         } else if (mType == ProxyRequest.WRITE) {
             byte[] typeBytes = Ints.toByteArray(mType);
-            returnData = Bytes.concat(typeBytes, mPaths.get(0).serialize());
+            byte[] pathSizeBytes = Ints.toByteArray(mPathSize);
 
-            for (int i = 1; i < mPaths.size(); i++) {
-                returnData = Bytes.concat(returnData, mPaths.get(i).serialize());
-            }
+            returnData = Bytes.concat(typeBytes, pathSizeBytes, mDataToWrite);
         }
 
         return returnData;

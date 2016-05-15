@@ -1,14 +1,22 @@
 package TaoProxy;
 
 import TaoServer.ServerUtility;
+import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 
+import java.io.DataOutputStream;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Executors;
 
 /**
@@ -41,7 +49,57 @@ public class TaoProxy implements Proxy {
 
             // Calculate the size of the ORAM tree in both height and total storage
             TREE_HEIGHT = ServerUtility.calculateHeight(minServerSize);
-            TOTAL_STORAGE_SIZE = ServerUtility.calculateHeight(TREE_HEIGHT);
+            TOTAL_STORAGE_SIZE = ServerUtility.calculateSize(TREE_HEIGHT);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void initializeServer() {
+        try {
+            int totalPaths = 1 << TaoProxy.TREE_HEIGHT;
+            System.out.println("Total paths " + totalPaths);
+            byte[] dataToWrite = null;
+            int pathSize = 0;
+
+            for (int i = 0; i < totalPaths; i++) {
+                System.out.println("Creating path " + i);
+                Socket socket = new Socket("localhost", 12345);
+                DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+                InputStream input = socket.getInputStream();
+
+                Path defaultPath = new Path(i);
+//                if (dataToWrite == null) {
+                    dataToWrite = defaultPath.serialize();
+                    pathSize = dataToWrite.length;
+  //              } else {
+    //                dataToWrite = Bytes.concat(dataToWrite, defaultPath.serialize());
+      //          }
+
+
+                ProxyRequest writebackRequest = new ProxyRequest(ProxyRequest.WRITE, pathSize, dataToWrite);
+
+                byte[] encryptedWriteBackPaths = writebackRequest.serialize();
+                byte[] messageTypeBytes = Ints.toByteArray(Constants.PROXY_WRITE_REQUEST);
+                byte[] messageLengthBytes = Ints.toByteArray(encryptedWriteBackPaths.length);
+                output.write(Bytes.concat(messageTypeBytes, messageLengthBytes));
+                output.write(encryptedWriteBackPaths);
+
+                byte[] typeAndSize = new byte[8];
+                input.read(typeAndSize);
+
+                int type = Ints.fromByteArray(Arrays.copyOfRange(typeAndSize, 0, 4));
+                int length = Ints.fromByteArray(Arrays.copyOfRange(typeAndSize, 4, 8));
+
+                byte[] message = new byte[length];
+                input.read(message);
+
+                output.close();
+                input.close();
+                socket.close();
+            }
+            run();
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -61,7 +119,7 @@ public class TaoProxy implements Proxy {
         // When a response is received, the processor will answer the request, flush the path, then may perform a
         // write back
         mProcessor.answerRequest(req, resp, isFakeRead);
-        mProcessor.flush(resp.getPath().getID());
+        mProcessor.flush(resp.getPathID());
         mProcessor.writeBack(Constants.WRITE_BACK_THRESHOLD);
     }
 
@@ -73,6 +131,7 @@ public class TaoProxy implements Proxy {
 
     public void run() {
         try {
+            System.out.println("going to run the proxy");
             // Create an asynchronous channel to listen for connections
             AsynchronousServerSocketChannel channel =
                     AsynchronousServerSocketChannel.open(mThreadGroup).bind(new InetSocketAddress(12344));

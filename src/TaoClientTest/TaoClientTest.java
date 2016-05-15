@@ -34,14 +34,13 @@ public class TaoClientTest {
             // Create proxy
             TaoProxy proxy = new TaoProxy(systemSize);
 
-            // Run proxy
-            proxy.run();
+            proxy.initializeServer();
         };
         new Thread(proxyRunnable).start();
 
         // Wait 1 second for the server and proxy to come up
         try {
-            Thread.sleep(1000);
+            Thread.sleep(5000);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -55,6 +54,12 @@ public class TaoClientTest {
         System.out.println("@@@@@@@@@@@@ Going to send write request for " + blockID);
         boolean writeStatus = client.write(blockID, dataToWrite);
         assertTrue(writeStatus);
+
+//        try {
+//            Thread.sleep(5000);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
 
         System.out.println("\n\n");
 
@@ -74,6 +79,12 @@ public class TaoClientTest {
         byte[] s = client.read(blockID);
 
         System.out.println("Read request for blockID " + blockID + " has data:");
+
+//        try {
+//            Thread.sleep(3000);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
 
         for (byte b : s) {
             System.out.print(b);
@@ -114,6 +125,5 @@ public class TaoClientTest {
                 assertTrue(Arrays.equals(dataToWrite1, z));
             }
         }
-
     }
 }

@@ -22,45 +22,45 @@ public class TestServer {
     }
 
     public void run() {
-        try {
-            // Create server socket and wait for connection
-            ServerSocket serverSocket = new ServerSocket(12345);
-            Socket clientServerSocket = serverSocket.accept();
-
-            // Create input stream
-            InputStream input = clientServerSocket.getInputStream();
-
-            // Get the message type
-            byte[] messageType = new byte[4];
-            input.read(messageType, 0, messageType.length);
-            int messageTypeInt = Ints.fromByteArray(messageType);
-
-            // Serve request based on type
-            if (messageTypeInt == Constants.PROXY_READ_REQUEST) {
-                // Read rest of request
-                byte[] message = new byte[ProxyRequest.getProxyReadRequestSize()];
-                input.read(message, 0, message.length);
-
-                // Parse bytes to ProxyRequest
-                ProxyRequest request = new ProxyRequest(message);
-
-                // Create output stream to proxy
-                DataOutputStream output = new DataOutputStream(clientServerSocket.getOutputStream());
-
-                // Create response
-                Path samplePath = getFilledPath(request.getPathID());
-                ServerResponse response = new ServerResponse(samplePath);
-
-                // Send response
-                output.write(response.serializeAsMessage());
-            } else if (messageTypeInt == Constants.PROXY_WRITE_REQUEST) {
-                byte[] message = new byte[ProxyRequest.getProxyWriteRequestSize()];
-                input.read(message, 0, message.length);
-               // byte[] messageBytes = new String(message).getBytes(StandardCharsets.UTF_8);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+ //       try {
+//            // Create server socket and wait for connection
+//            ServerSocket serverSocket = new ServerSocket(12345);
+//            Socket clientServerSocket = serverSocket.accept();
+//
+//            // Create input stream
+//            InputStream input = clientServerSocket.getInputStream();
+//
+//            // Get the message type
+//            byte[] messageType = new byte[4];
+//            input.read(messageType, 0, messageType.length);
+//            int messageTypeInt = Ints.fromByteArray(messageType);
+//
+//            // Serve request based on type
+//            if (messageTypeInt == Constants.PROXY_READ_REQUEST) {
+//                // Read rest of request
+//                byte[] message = new byte[ProxyRequest.getProxyReadRequestSize()];
+//                input.read(message, 0, message.length);
+//
+//                // Parse bytes to ProxyRequest
+//                ProxyRequest request = new ProxyRequest(message);
+//
+//                // Create output stream to proxy
+//                DataOutputStream output = new DataOutputStream(clientServerSocket.getOutputStream());
+//
+//                // Create response
+//                Path samplePath = getFilledPath(request.getPathID());
+//                ServerResponse response = new ServerResponse(samplePath);
+//
+//                // Send response
+//                output.write(response.serializeAsMessage());
+//            } else if (messageTypeInt == Constants.PROXY_WRITE_REQUEST) {
+//                byte[] message = new byte[ProxyRequest.getProxyWriteRequestSize()];
+//                input.read(message, 0, message.length);
+//               // byte[] messageBytes = new String(message).getBytes(StandardCharsets.UTF_8);
+//            }
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
     }
 
     public Path getFilledPath(long pathID) {

@@ -5,8 +5,10 @@ import com.google.common.collect.Multiset;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 
+import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
@@ -71,9 +73,10 @@ public class TaoProcessor implements Processor {
         // TODO: Create secret key
         try {
             KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-            keyGen.init(256); // for example
+            keyGen.init(128); // for example
             SecretKey secretKey = keyGen.generateKey();
-            mKey = null;
+            mKey = secretKey;
+            Utility.mSecretKey = mKey;
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -221,6 +224,7 @@ public class TaoProcessor implements Processor {
                                             int messageType = Ints.fromByteArray(messageTypeBytes);
                                             int messageLength = Ints.fromByteArray(messageLengthBytes);
 
+                                            System.out.println("I was told the message will have size " + messageLength);
                                             // Asynchronously read response from server
                                             ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
                                             channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
@@ -244,7 +248,8 @@ public class TaoProcessor implements Processor {
                                                     // Serve message based on type
                                                     if (messageType == Constants.SERVER_RESPONSE) {
                                                         // Read in message bytes
-                                                        byte[] responseData = new byte[ServerResponse.getServerResponseSize()];
+                                                        // TODO: darn
+                                                        byte[] responseData = new byte[messageLength];
                                                         System.out.println("Limit is " + pathInBytes.limit());
                                                         System.out.println("Size of response data is " + responseData.length);
                                                         pathInBytes.get(responseData);
@@ -305,8 +310,12 @@ public class TaoProcessor implements Processor {
         // Get information about response
         boolean fakeRead = isFakeRead;
 
+        // Decrypt response data here
+        byte[] encryptedPathBytes = resp.getEncryptedPath();
+        Path decryptedPath = new Path(resp.getPathID(), encryptedPathBytes);
+
         // Insert every bucket along path that is not in subtree into subtree
-        mSubtree.addPath(resp.getPath());
+        mSubtree.addPath(decryptedPath);
 
         // Update the response map entry for this request
         ResponseMapEntry responseMapEntry = mResponseMap.get(req);
@@ -399,7 +408,7 @@ public class TaoProcessor implements Processor {
 
         // Now that the response has come back, remove one instance of the requested
         // block ID from mPathReqMultiSet
-        mPathReqMultiSet.remove(resp.getPath().getID());
+        mPathReqMultiSet.remove(resp.getPathID());
     }
 
     /**
@@ -628,18 +637,29 @@ public class TaoProcessor implements Processor {
         long[] writePathIDs = new long[Constants.WRITE_BACK_THRESHOLD];
 
         // Pop off pathIDs from write queue and retrieve corresponding paths from subtree
-        ArrayList<Path> writeBackPaths = new ArrayList<>();
+
+        byte[] dataToWrite = null;
+        int pathSize = 0;
         for(int i = 0; i < Constants.WRITE_BACK_THRESHOLD; i++) {
             Path p = mSubtree.getPath(mWriteQueue.remove());
-            writeBackPaths.add(p);
+
+            if (dataToWrite == null) {
+                dataToWrite = p.serialize();
+                pathSize = p.serialize().length;
+            } else {
+                dataToWrite = Bytes.concat(dataToWrite, p.serialize());
+            }
+
             writePathIDs[i] = p.getID();
         }
 
         // TODO: encrypt
-        ProxyRequest writebackRequest = new ProxyRequest(ProxyRequest.WRITE, writeBackPaths);
-        byte[] encryptedWriteBackPaths = writebackRequest.serialize();
-
         try {
+            ProxyRequest writebackRequest = new ProxyRequest(ProxyRequest.WRITE, pathSize, dataToWrite);
+
+            byte[] encryptedWriteBackPaths = writebackRequest.serialize();
+
+
             // Write paths to server, wait for response
             // Open up channel to server
             // TODO: make way of changing server address

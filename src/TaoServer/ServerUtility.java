@@ -1,5 +1,10 @@
 package TaoServer;
 
+import TaoProxy.Constants;
+import TaoProxy.ServerResponse;
+
+import javax.crypto.SecretKey;
+
 /**
  * Created by ajmagat on 4/20/16.
  */
@@ -37,6 +42,14 @@ public class ServerUtility {
     public static long calculateSize(int treeHeight) {
         // Given the height of tree, we now find the amount of buckets we need to make this a full binary tree
         long numBuckets = (long) Math.pow(2, treeHeight + 1) - 1;
+
+        long newBucketSize = ServerConstants.BUCKET_SIZE;
+
+        if ((newBucketSize % Constants.IV_SIZE) != 0) {
+            newBucketSize += Constants.IV_SIZE - (newBucketSize % Constants.IV_SIZE);
+        }
+
+        ServerConstants.BUCKET_SIZE = newBucketSize;
 
         // We can now calculate the total size of the system
         return numBuckets * ServerConstants.BUCKET_SIZE;

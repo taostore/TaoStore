@@ -3,6 +3,7 @@ package TaoServer;
 import TaoProxy.*;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
+import com.google.common.primitives.Longs;
 
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
@@ -174,11 +175,6 @@ public class TaoServer {
 
             // Seek into the file
             mDiskFile.seek(offsetInDisk);
-//            System.out.print("Going to write ");
-//            for (byte b : Arrays.copyOfRange(data, dataIndexStart, dataIndexStop)) {
-//                System.out.print(b);
-//            }
-//            System.out.println();
 
             // Write bucket to disk
             mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
@@ -201,8 +197,10 @@ public class TaoServer {
                 // Seek into disk
                 mDiskFile.seek(offsetInDisk);
 
+                byte[] dataToWrite = Arrays.copyOfRange(data, dataIndexStart, dataIndexStop);
+
                 // Write bucket to disk
-                mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
+                mDiskFile.write(dataToWrite);
 
                 // Increment indices
                 dataIndexStart += bucketSize;
@@ -212,6 +210,7 @@ public class TaoServer {
             // Release the write lock
             mRWL.writeLock().unlock();
 
+         //   System.exit(1);
             // Return true, signaling that the write was successful
             return true;
         } catch (Exception e) {
@@ -239,7 +238,7 @@ public class TaoServer {
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
                 public void completed(AsynchronousSocketChannel ch, Void att){
-                    System.out.println("Hey just accepted a proxy request");
+
                     // Start listening for other connections
                     channel.accept(null, this);
 
@@ -250,8 +249,6 @@ public class TaoServer {
                     ch.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
-                            System.out.println("Hey just read a proxy request");
-
                             // Flip buffer for reading
                             messageTypeAndSize.flip();
 
@@ -266,10 +263,10 @@ public class TaoServer {
                             int messageLength = Ints.fromByteArray(messageLengthBytes);
 
                             ByteBuffer message = ByteBuffer.allocate(messageLength);
-
                             ch.read(message, null, new CompletionHandler<Integer, Void>() {
                                 @Override
                                 public void completed(Integer result, Void attachment) {
+
                                     while (message.remaining() > 0) {
                                         ch.read(message, null, this);
                                         return;
@@ -286,15 +283,13 @@ public class TaoServer {
 
                                     ByteBuffer messageTypeAndLengthBuffer = null;
                                     byte[] serializedResponse = null;
+
                                     if (messageType == Constants.PROXY_READ_REQUEST) {
                                         // Read the request path
                                         byte[] returnPathData = readPath(proxyReq.getPathID());
 
-                                        // Create path based on bytes
-                                        Path returnPath = new Path(proxyReq.getPathID(), returnPathData);
-
                                         // Create a server response
-                                        ServerResponse readResponse = new ServerResponse(returnPath);
+                                        ServerResponse readResponse = new ServerResponse(proxyReq.getPathID(), returnPathData);
 
                                         // TODO: Encrypt the server response?
                                         // Send response to proxy
@@ -307,14 +302,27 @@ public class TaoServer {
                                         messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
 
                                         // First we send the message type to the server along with the size of the message
-                                        System.out.println("Returning message of size " + readResponse.serializeAsMessage().length);
 
                                     } else if (messageType == Constants.PROXY_WRITE_REQUEST) {
                                         // Write each path
                                         boolean success = true;
-                                        for (Path p : proxyReq.getPathList()) {
-                                            if (! writePath(p.getID(), p.serializeForDiskWrite())) {
-                                                success = false;
+                                        byte[] dataToWrite = proxyReq.getDataToWrite();
+                                        System.out.println("The data to write is of size " + dataToWrite.length);
+                                        int pathSize = proxyReq.getPathSize();
+                                        int startIndex = 0;
+                                        int endIndex = pathSize;
+                                        byte[] currentPath;
+                                        long currentPathID;
+                                        while (startIndex < dataToWrite.length) {
+                                            currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
+                                            currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
+
+                                            startIndex += pathSize;
+                                            endIndex += pathSize;
+                                            byte[] encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
+
+                                            if (! writePath(currentPathID, encryptedPath)) {
+                                                success= false;
                                             }
                                         }
 
@@ -332,13 +340,38 @@ public class TaoServer {
 
                                         byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
                                         messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
+                                    } else if (messageType == Constants.PROXY_INITIALIZE_REQUEST) {
+                                        // Write each path
+                                        boolean success = true;
+                                        byte[] dataToWrite = proxyReq.getDataToWrite();
+
+                                        int pathSize = proxyReq.getPathSize();
+                                        int startIndex = 0;
+                                        int endIndex = pathSize;
+                                        byte[] currentPath;
+                                        long currentPathID;
+                                        while (endIndex < dataToWrite.length) {
+                                            currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
+                                            currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
+
+                                            startIndex += pathSize;
+                                            endIndex += pathSize;
+
+                                            if (! writePath(currentPathID, Arrays.copyOfRange(currentPath, 8, currentPath.length))) {
+                                                success= false;
+                                            }
+                                        }
+
+
                                     }
 
                                     ByteBuffer returnMessageBuffer = ByteBuffer.wrap(serializedResponse);
+
                                     ch.write(messageTypeAndLengthBuffer, null, new CompletionHandler<Integer, Void>() {
 
                                         @Override
                                         public void completed(Integer result, Void attachment) {
+
                                             ch.write(returnMessageBuffer);
                                         }
 

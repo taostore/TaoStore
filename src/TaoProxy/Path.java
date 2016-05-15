@@ -1,5 +1,8 @@
 package TaoProxy;
 
+import TaoServer.ServerConstants;
+import TaoServer.ServerUtility;
+import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
@@ -23,8 +26,11 @@ public class Path implements Serializable {
      * @brief Default constructor
      */
     public Path() {
-        mID = -1;
+        mID = 0;
         mBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
+        for (int i = 0; i < mBuckets.length; i++) {
+            mBuckets[i] = new Bucket();
+        }
         mPathBitmap = 0;
     }
 
@@ -36,23 +42,29 @@ public class Path implements Serializable {
         mID = pathID;
         mBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
 
-        for (int i = 0; i < TaoProxy.TREE_HEIGHT + 1; i++) {
+        for (int i = 0; i < mBuckets.length; i++) {
             mBuckets[i] = new Bucket();
         }
 
         mPathBitmap = 0;
     }
 
-    public Path(long pathID, byte[] bucketData) {
+    public Path(long pathID, byte[] encryptedBucketData) {
         mID = pathID;
 
         fillBitmap();
 
         mBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
 
-        int entireBucketSize = Bucket.getBucketSize();
+       // int encryptedBucketSize = Bucket.getBucketSize() + Constants.IV_SIZE;
+        int encryptedBucketSize = 16448; //(int) ServerConstants.BUCKET_SIZE;
+
         for (int i = 0; i < mBuckets.length; i++) {
-            mBuckets[i] = new Bucket(Arrays.copyOfRange(bucketData, entireBucketSize * i, entireBucketSize + entireBucketSize * i));
+            byte[] encryptedBucket = Arrays.copyOfRange(encryptedBucketData, encryptedBucketSize * i,
+                    encryptedBucketSize + encryptedBucketSize * i);
+
+            byte[] decryptedBucket = Utility.decrypt(encryptedBucket);
+            mBuckets[i] = new Bucket(decryptedBucket);
         }
     }
 
@@ -68,7 +80,8 @@ public class Path implements Serializable {
 
         mBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
 
-        int entireBucketSize = Bucket.getBucketSize();
+        int entireBucketSize = (int) ServerConstants.BUCKET_SIZE;
+
         for (int i = 0; i < mBuckets.length; i++) {
             mBuckets[i] = new Bucket(Arrays.copyOfRange(serializedData, 8 + entireBucketSize * i, 8 + entireBucketSize + entireBucketSize * i));
         }
@@ -189,16 +202,17 @@ public class Path implements Serializable {
      * @return
      */
     public byte[] serialize() {
-        byte[] returnData = new byte[Path.getPathSize()];
-
         byte[] idBytes = Longs.toByteArray(mID);
-        System.arraycopy(idBytes, 0, returnData, 0, idBytes.length);
-        int entireBucketSize = Bucket.getBucketSize();
 
-        for(int i = 0; i < mBuckets.length; i++) {
-            System.arraycopy(mBuckets[i].serialize(), 0, returnData, idBytes.length + entireBucketSize * i, entireBucketSize);
+
+        // TODO: encrypt entire path, not individual buckets
+        byte[] encryptedBuckets = Utility.encrypt(mBuckets[0].serialize());
+
+        for(int i = 1; i < mBuckets.length; i++) {
+            encryptedBuckets = Bytes.concat(encryptedBuckets, Utility.encrypt(mBuckets[i].serialize()));
         }
-        return returnData;
+
+        return Bytes.concat(idBytes, encryptedBuckets);
     }
 
     /**

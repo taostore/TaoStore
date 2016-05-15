@@ -38,7 +38,8 @@ public class TaoSequencer implements Sequencer{
     @Override
     public void onReceiveRequest(ClientRequest req) {
         // Create an empty block with null data
-        Block empty = new Block(true);
+        Block empty = new Block();
+        empty.setData(null);
 
         // Put request and new empty block into request map
         mRequestMap.put(req, empty);

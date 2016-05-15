@@ -2,6 +2,7 @@ package TaoProxy;
 
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
+import com.google.common.primitives.Longs;
 
 import java.util.Arrays;
 
@@ -10,34 +11,40 @@ import java.util.Arrays;
  */
 public class ServerResponse {
     // Data for path that this response corresponds to
-    private Path mPath;
     private boolean mWriteStatus;
+    private long mPathID;
+    private byte[] mEncryptedPath;
 
     /**
      * @brief Default constructor
      */
     public ServerResponse() {
-        mPath = null;
         mWriteStatus = false;
+        mPathID = -1;
+        mEncryptedPath = null;
     }
 
     /**
      * @brief Constructor that creates a response for the given request
-     * @param
-     * @param path
+     * @param pathID
+     * @param encryptedData
      */
-    public ServerResponse(Path path) {
-        mPath = path;
+    public ServerResponse(long pathID, byte[] encryptedData) {
         mWriteStatus = false;
+        mPathID = pathID;
+        mEncryptedPath = encryptedData;
     }
 
     public ServerResponse(byte[] serializedData) {
+        System.out.println("SERIALIZED DATA SIZE IS " + serializedData.length);
         int type = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 0, 4));
         mWriteStatus = type == 1 ? true : false;
         if (serializedData.length > 4) {
-            mPath = new Path(Arrays.copyOfRange(serializedData, 4, serializedData.length));
+            mPathID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 4, 12));
+            mEncryptedPath = Arrays.copyOfRange(serializedData, 12, serializedData.length);
+            System.out.println("THIS NEW ENCRYPTEDPATH HAS SIZE " + mEncryptedPath.length);
         } else {
-            mPath = null;
+            mEncryptedPath = null;
         }
     }
 
@@ -45,8 +52,12 @@ public class ServerResponse {
      * @brief
      * @return
      */
-    public Path getPath() {
-        return mPath;
+    public byte[] getEncryptedPath() {
+        return mEncryptedPath;
+    }
+
+    public long getPathID() {
+        return mPathID;
     }
 
     public boolean getWriteStatus() {
@@ -76,8 +87,9 @@ public class ServerResponse {
         int type = mWriteStatus ? 1 : 0;
         byte[] typeBytes = Ints.toByteArray(type);
 
-        if (mPath != null) {
-            return Bytes.concat(typeBytes, mPath.serialize());
+        if (mEncryptedPath != null) {
+            byte[] pathIDBytes = Longs.toByteArray(mPathID);
+            return Bytes.concat(typeBytes, pathIDBytes, mEncryptedPath);
         } else {
             return typeBytes;
         }

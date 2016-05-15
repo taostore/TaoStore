@@ -35,14 +35,14 @@ public class TestProxy implements Proxy {
 
     @Override
     public void onReceiveResponse(ClientRequest request, ServerResponse response, boolean isFakeRead) {
-        mResponseReceived = true;
-        System.out.println("onReceiveResponse test proxy " + request.getRequestID());
-
-        mReceivedPath = response.getPath();
-
-        synchronized (mWaitLock) {
-            mWaitLock.notifyAll();
-        }
+//        mResponseReceived = true;
+//        System.out.println("onReceiveResponse test proxy " + request.getRequestID());
+//
+//        mReceivedPath = response.getPath();
+//
+//        synchronized (mWaitLock) {
+//            mWaitLock.notifyAll();
+//        }
     }
 
     @Override
