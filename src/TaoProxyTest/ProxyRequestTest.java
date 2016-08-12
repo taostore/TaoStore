@@ -1,14 +1,6 @@
 package TaoProxyTest;
 
-import TaoProxy.Constants;
-import TaoProxy.Path;
-import TaoProxy.ProxyRequest;
 import org.junit.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.Assert.*;
 
 /**
  * Created by ajmagat on 5/4/16.

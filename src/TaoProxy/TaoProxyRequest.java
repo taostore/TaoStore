@@ -1,35 +1,29 @@
 package TaoProxy;
 
+import Messages.ProxyRequest;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
-import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 /**
- * @brief Class that represents a request from a proxy to the server
+ *
  */
-public class ProxyRequest {
-    public static final int READ = 0;
-    public static final int WRITE = 1;
-
-    // 0 = read path
-    // 1 = write paths
+public class TaoProxyRequest implements ProxyRequest {
     private int mType;
 
     // If mType == 0, this is the path that we are interested in reading
     private long mReadPathID;
 
+    // Amount of bytes in a path
     private int mPathSize;
     private byte[] mDataToWrite;
 
     /**
      * @brief Default constructor
      */
-    public ProxyRequest() {
+    public TaoProxyRequest() {
         mType = -1;
         mReadPathID = -1;
         mPathSize = -1;
@@ -41,7 +35,7 @@ public class ProxyRequest {
      * @param type
      * @param pathID
      */
-    public ProxyRequest(int type, long pathID) {
+    public TaoProxyRequest(int type, long pathID) {
         mType = type;
         mReadPathID = pathID;
         mPathSize = -1;
@@ -54,7 +48,7 @@ public class ProxyRequest {
      * @param pathSize
      * @param dataToWrite
      */
-    public ProxyRequest(int type, int pathSize, byte[] dataToWrite) {
+    public TaoProxyRequest(int type, int pathSize, byte[] dataToWrite) {
         mType = type;
         mReadPathID = -1;
         mPathSize = pathSize;
@@ -65,14 +59,14 @@ public class ProxyRequest {
      * @brief Constructor that takes in an array of bytes to be parsed as a ProxyRequest
      * @param serializedData
      */
-    public ProxyRequest(byte[] serializedData) {
+    public TaoProxyRequest(byte[] serializedData) {
         mType = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 0, 4));
 
-        if (mType == ProxyRequest.READ) {
+        if (mType == Constants.PROXY_READ_REQUEST) {
             mReadPathID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 4, 12));
             mPathSize = -1;
             mDataToWrite = null;
-        } else if (mType == ProxyRequest.WRITE) {
+        } else if (mType == Constants.PROXY_WRITE_REQUEST) {
             // TODO: Change this to not need paths anymore
             mReadPathID = -1;
             mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 4, 8));
@@ -93,39 +87,77 @@ public class ProxyRequest {
         return mType;
     }
 
+    public void setType(int type) {
+        mType = type;
+    }
+
+    public void initFromSerialized(byte[] serialized) {
+        mType = Ints.fromByteArray(Arrays.copyOfRange(serialized, 0, 4));
+
+        if (mType == Constants.PROXY_READ_REQUEST) {
+            mReadPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
+            mPathSize = -1;
+            mDataToWrite = null;
+        } else if (mType == Constants.PROXY_WRITE_REQUEST) {
+            // TODO: Change this to not need paths anymore
+            mReadPathID = -1;
+            mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serialized, 4, 8));
+
+            int serializedIndex = 8;
+            int dataToWriteIndex = 0;
+            mDataToWrite = new byte[serialized.length - 8];
+
+            while (serializedIndex < serialized.length) {
+                System.arraycopy(serialized, serializedIndex, mDataToWrite, dataToWriteIndex, mPathSize);
+                serializedIndex += mPathSize;
+                dataToWriteIndex += mPathSize;
+            }
+        }
+    }
+
     public int getPathSize() {
         return mPathSize;
     }
 
+    public void setPathSize(int pathSize) {
+        mPathSize = pathSize;
+    }
+
+    @Override
     public long getPathID() {
         return mReadPathID;
+    }
+
+    public void setPathID(long pathID) {
+        mReadPathID = pathID;
     }
 
     public byte[] getDataToWrite() {
         return mDataToWrite;
     }
 
-    public static int getProxyReadRequestSize() {
-        return 4 + 8;
+    public void setDataToWrite(byte[] data) {
+        mDataToWrite = data;
     }
 
     public static int getProxyWriteRequestSize() {
-        return 4 + Constants.WRITE_BACK_THRESHOLD * Path.getPathSize();
+        return 4 + Constants.WRITE_BACK_THRESHOLD * TaoPath.getPathSize();
     }
 
     /**
      * @brief
      * @return
      */
+    @Override
     public byte[] serialize() {
         byte[] returnData = null;
 
-        if (mType == ProxyRequest.READ) {
+        if (mType == Constants.PROXY_READ_REQUEST) {
             byte[] typeBytes = Ints.toByteArray(mType);
             byte[] pathBytes = Longs.toByteArray(mReadPathID);
 
             returnData = Bytes.concat(typeBytes, pathBytes);
-        } else if (mType == ProxyRequest.WRITE) {
+        } else if (mType == Constants.PROXY_WRITE_REQUEST) {
             byte[] typeBytes = Ints.toByteArray(mType);
             byte[] pathSizeBytes = Ints.toByteArray(mPathSize);
 
@@ -133,22 +165,5 @@ public class ProxyRequest {
         }
 
         return returnData;
-    }
-
-    /**
-     * @brief
-     * @return
-     */
-    public byte[] serializeAsMessage() {
-        byte[] serial = serialize();
-
-        byte[] protocolByte = null;
-        if (mType == ProxyRequest.READ) {
-            protocolByte = Ints.toByteArray(Constants.PROXY_READ_REQUEST);
-        } else if (mType == ProxyRequest.WRITE) {
-            protocolByte = Ints.toByteArray(Constants.PROXY_WRITE_REQUEST);
-        }
-
-        return Bytes.concat(protocolByte, serial);
     }
 }

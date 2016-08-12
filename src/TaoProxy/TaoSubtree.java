@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
 import com.google.common.collect.Multiset;
 
 import java.util.*;
@@ -23,6 +24,17 @@ public class TaoSubtree implements Subtree {
     }
 
     @Override
+    public void initRoot() {
+        int numServers = TaoConfigs.PARTITION_SERVERS.size();
+        if ((numServers & -numServers) != numServers) {
+            // TODO: only use a power of two of the servers
+        }
+
+        // Initialize the needed amount of top nodes
+        mRoot = new TaoSubtreeBucket();
+    }
+
+    @Override
     public Bucket getBucketWithBlock(long blockID) {
         return mBlockMap.getOrDefault(blockID, null);
     }
@@ -32,11 +44,11 @@ public class TaoSubtree implements Subtree {
         // Check if subtree is empty
         if (mRoot == null) {
             // If empty, initialize root with root of given path
-            mRoot = new SubtreeBucket(path.getBucket(0));
+            mRoot = new TaoSubtreeBucket(path.getBucket(0));
         }
 
         // Get the directions for this path
-        boolean[] pathDirection = Utility.getPathFromPID(path.getID(), TaoProxy.TREE_HEIGHT);
+        boolean[] pathDirection = Utility.getPathFromPID(path.getID(), TaoConfigs.TREE_HEIGHT);
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
@@ -47,12 +59,11 @@ public class TaoSubtree implements Subtree {
             // Determine whether the path is turning left or right from current bucket
             if (right) {
                 // Attempt to initialize right bucket
-                currentBucket.initializeRight(path.getBucket(i));
+                currentBucket.setRight(path.getBucket(i));
 
                 // Add blocks in bucket into map
                 List<Block> blocksToAdd = currentBucket.getFilledBlocks();
                 for (Block b : blocksToAdd) {
-                    System.out.println("Adding block " + b.getBlockID() + " to the blockid map");
                     mBlockMap.put(b.getBlockID(), currentBucket);
                 }
 
@@ -60,12 +71,11 @@ public class TaoSubtree implements Subtree {
                 currentBucket = currentBucket.getRight();
             } else {
                 // Attempt to initialize left bucket
-                currentBucket.initializeLeft(path.getBucket(i));
+                currentBucket.setLeft(path.getBucket(i));
 
                 // Add blocks in bucket into map
                 List<Block> blocksToAdd = currentBucket.getFilledBlocks();
                 for (Block b : blocksToAdd) {
-                    System.out.println("Adding block " + b.getBlockID() + " to the blockid map");
                     mBlockMap.put(b.getBlockID(), currentBucket);
                 }
 
@@ -81,11 +91,11 @@ public class TaoSubtree implements Subtree {
     @Override
     public Path getPath(long pathID) {
         // Create path and insert the root of tree
-        Path returnPath = new Path(pathID);
+        Path returnPath = new TaoPath(pathID);
         returnPath.addBucket(mRoot);
 
         // Get the directions for this path
-        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoProxy.TREE_HEIGHT);
+        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
@@ -105,7 +115,7 @@ public class TaoSubtree implements Subtree {
     @Override
     public Path getPathToFlush(long pathID) {
         // Create path and insert the root of tree
-        Path returnPath = new Path(pathID);
+        Path returnPath = new TaoPath(pathID);
 
         // Reset root bucket
         resetBucket(mRoot);
@@ -114,7 +124,7 @@ public class TaoSubtree implements Subtree {
         returnPath.addBucket(mRoot);
 
         // Get the directions for this path
-        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoProxy.TREE_HEIGHT);
+        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
@@ -185,13 +195,13 @@ public class TaoSubtree implements Subtree {
 
         // Check if we should delete the child
         if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet)) {
-            System.out.println("Deleting because " + timestamp + " < " + minTime);
+            TaoLogger.log("Deleting because " + timestamp + " < " + minTime);
             // We should delete child, check if it was the right or left child
             if (directions[currentLevel]) {
-                System.out.println("Going to delete the right child for path " + pathID + " at level " + currentLevel);
+                TaoLogger.log("Going to delete the right child for path " + pathID + " at level " + currentLevel);
                 bucket.setRight(null);
             } else {
-                System.out.println("Going to delete the left child for path " + pathID + " at level " + currentLevel);
+                TaoLogger.log("Going to delete the left child for path " + pathID + " at level " + currentLevel);
                 bucket.setLeft(null);
             }
         }
@@ -219,11 +229,6 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public void deleteNodes(long pathID, long minTime, Set<Long> pathReqMultiSet) {
-        System.out.println("OH YEAH DELETE NODES WITH TIMESTAMP OF " + minTime + " FOR PATH " + pathID);
-        System.out.println("Paths in multiset:");
-        for (Long l : pathReqMultiSet) {
-            System.out.println("do not delete path " + l);
-        }
         // TODO: need locks?
         // Check if subtree is empty
         if (mRoot == null) {
@@ -232,7 +237,7 @@ public class TaoSubtree implements Subtree {
         }
 
         // Get the directions for this path
-        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoProxy.TREE_HEIGHT);
+        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
 
 
@@ -243,10 +248,10 @@ public class TaoSubtree implements Subtree {
         // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
         // thus it should be okay to set mRoot to null
         if (mRoot.getUpdateTime() <= minTime && ! pathReqMultiSet.contains(pathID)) {
-            System.out.println("** Deleting the root node too");
+            TaoLogger.log("** Deleting the root node too");
             mRoot = null;
         } else {
-            System.out.println("** Not deleting root node because either " + mRoot.getUpdateTime() + " > " + minTime + " or pathReqMultiSet.contains(" + pathID + ") is " + pathReqMultiSet.contains(pathID));
+            TaoLogger.log("** Not deleting root node because either " + mRoot.getUpdateTime() + " > " + minTime + " or pathReqMultiSet.contains(" + pathID + ") is " + pathReqMultiSet.contains(pathID));
         }
     }
 

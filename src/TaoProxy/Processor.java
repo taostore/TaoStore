@@ -1,7 +1,8 @@
 package TaoProxy;
 
 
-import TaoClient.Client;
+import Messages.ClientRequest;
+import Messages.ServerResponse;
 
 public interface Processor {
 

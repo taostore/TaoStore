@@ -5,6 +5,8 @@ import com.google.common.collect.Multiset;
 import java.util.Set;
 
 public interface Subtree {
+    void initRoot();
+
     /**
      * @brief Method to add a path to the subtree
      * @param path
@@ -13,6 +15,7 @@ public interface Subtree {
 
     /**
      * @brief Method to get requested path from subtree
+     * note: shallow copy
      * @param pathID
      * @return path with ID == pathID
      */

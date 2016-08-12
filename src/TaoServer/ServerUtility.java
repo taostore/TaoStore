@@ -1,9 +1,6 @@
 package TaoServer;
 
 import TaoProxy.Constants;
-import TaoProxy.ServerResponse;
-
-import javax.crypto.SecretKey;
 
 /**
  * Created by ajmagat on 4/20/16.
@@ -34,25 +31,33 @@ public class ServerUtility {
         return ret;
     }
 
+    public static long calculateBucketSize() {
+        long updateTimeSize = 8;
+        long blockBitmapSize = 4;
+        long initializationVecorSize = Constants.IV_SIZE;
+        long blocksInBucket = Constants.BUCKET_SIZE;
+        long totalBlockSize = Constants.TOTAL_BLOCK_SIZE;
+
+        long bucketSize = updateTimeSize + blockBitmapSize + initializationVecorSize + (blocksInBucket * totalBlockSize);
+
+        if ((bucketSize % Constants.IV_SIZE) != 0) {
+            bucketSize += Constants.IV_SIZE - (bucketSize % Constants.IV_SIZE);
+        }
+
+        return bucketSize;
+    }
+
     /**
      * @brief Method that will calculate the total storage requirements, in MB, for the ORAM tree based on the specified
      * height of the tree
      * @param treeHeight
      */
-    public static long calculateSize(int treeHeight) {
+    public static long calculateSize(int treeHeight, long bucketSize) {
         // Given the height of tree, we now find the amount of buckets we need to make this a full binary tree
         long numBuckets = (long) Math.pow(2, treeHeight + 1) - 1;
 
-        long newBucketSize = ServerConstants.BUCKET_SIZE;
-
-        if ((newBucketSize % Constants.IV_SIZE) != 0) {
-            newBucketSize += Constants.IV_SIZE - (newBucketSize % Constants.IV_SIZE);
-        }
-
-        ServerConstants.BUCKET_SIZE = newBucketSize;
-
         // We can now calculate the total size of the system
-        return numBuckets * ServerConstants.BUCKET_SIZE;
+        return numBuckets * bucketSize;
     }
 
     /**

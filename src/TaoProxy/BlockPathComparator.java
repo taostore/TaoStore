@@ -1,5 +1,7 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
+
 import java.util.Comparator;
 
 /**
@@ -21,7 +23,7 @@ public class BlockPathComparator implements Comparator<Block> {
      */
     public BlockPathComparator(long pathID, TaoPositionMap map) {
         mPathID = pathID;
-        mPath = Utility.getPathFromPID(mPathID, TaoProxy.TREE_HEIGHT);
+        mPath = Utility.getPathFromPID(mPathID, TaoConfigs.TREE_HEIGHT);
         mMap = map;
     }
 

@@ -1,93 +1,19 @@
 package TaoProxy;
 
-public class SubtreeBucket extends Bucket {
-    // Left and right child buckets
-    private SubtreeBucket mLeft;
-    private SubtreeBucket mRight;
+public interface SubtreeBucket extends Bucket {
+    void setRight(Bucket b);
 
-    /**
-     * @brief Default constructor
-     */
-    public SubtreeBucket() {
-        super();
-        mLeft = null;
-        mRight = null;
-    }
-
-    /**
-     * @brief Copy constructor
-     * @param bucket
-     */
-    public SubtreeBucket(Bucket bucket) {
-        super(bucket);
-        mLeft = null;
-        mRight = null;
-    }
-
-    /**
-     * @brief Mutator method to set right child if it does not exist
-     * @param bucket
-     */
-    public void initializeRight(Bucket bucket) {
-        if (mRight == null) {
-            System.out.println("Going right in subtree bucket");
-            if (bucket != null) {
-                mRight = new SubtreeBucket(bucket);
-            } else {
-                mRight = new SubtreeBucket();
-            }
-        } else {
-            System.out.println("Right subtree already filled");
-        }
-    }
-
-    /**
-     * @brief Mutator method to set left child if it does not exist
-     * @param bucket
-     */
-    public void initializeLeft(Bucket bucket) {
-        if (mLeft == null) {
-            System.out.println("Going left in subtree bucket");
-            if (bucket != null) {
-                mLeft = new SubtreeBucket(bucket);
-            } else {
-
-                mLeft = new SubtreeBucket();
-            }
-        } else {
-            System.out.println("Left subtree already filled");
-        }
-    }
-
-    public void setRight(Bucket b) {
-        if (b == null) {
-            mRight = null;
-        } else {
-            mRight = new SubtreeBucket(b);
-        }
-    }
-
-    public void setLeft(Bucket b) {
-        if (b == null) {
-            mLeft = null;
-        } else {
-            mLeft = new SubtreeBucket(b);
-        }
-    }
+    void setLeft(Bucket b);
 
     /**
      * @brief Accessor method to get the right child of this bucket
      * @return mRight
      */
-    public SubtreeBucket getRight() {
-        return mRight;
-    }
+    SubtreeBucket getRight();
 
     /**
      * @brief Accessor method to get the left child of this bucket
      * @return mLeft
      */
-    public SubtreeBucket getLeft() {
-        return mLeft;
-    }
+    SubtreeBucket getLeft();
 }

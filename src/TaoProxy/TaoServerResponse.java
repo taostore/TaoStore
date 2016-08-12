@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Messages.ServerResponse;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
@@ -7,9 +8,9 @@ import com.google.common.primitives.Longs;
 import java.util.Arrays;
 
 /**
- * @brief Class to represent a response for server or proxy
+ * Created by ajmagat on 6/3/16.
  */
-public class ServerResponse {
+public class TaoServerResponse implements ServerResponse {
     // Data for path that this response corresponds to
     private boolean mWriteStatus;
     private long mPathID;
@@ -18,7 +19,7 @@ public class ServerResponse {
     /**
      * @brief Default constructor
      */
-    public ServerResponse() {
+    public TaoServerResponse() {
         mWriteStatus = false;
         mPathID = -1;
         mEncryptedPath = null;
@@ -29,42 +30,64 @@ public class ServerResponse {
      * @param pathID
      * @param encryptedData
      */
-    public ServerResponse(long pathID, byte[] encryptedData) {
+    public TaoServerResponse(long pathID, byte[] encryptedData) {
         mWriteStatus = false;
         mPathID = pathID;
         mEncryptedPath = encryptedData;
     }
 
-    public ServerResponse(byte[] serializedData) {
-        System.out.println("SERIALIZED DATA SIZE IS " + serializedData.length);
+    /**
+     * @brief
+     * @param serializedData
+     */
+    public TaoServerResponse(byte[] serializedData) {
         int type = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 0, 4));
         mWriteStatus = type == 1 ? true : false;
         if (serializedData.length > 4) {
             mPathID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 4, 12));
             mEncryptedPath = Arrays.copyOfRange(serializedData, 12, serializedData.length);
-            System.out.println("THIS NEW ENCRYPTEDPATH HAS SIZE " + mEncryptedPath.length);
         } else {
             mEncryptedPath = null;
         }
     }
 
-    /**
-     * @brief
-     * @return
-     */
-    public byte[] getEncryptedPath() {
-        return mEncryptedPath;
+    public void initFromSerialized(byte[] serialized) {
+        int type = Ints.fromByteArray(Arrays.copyOfRange(serialized, 0, 4));
+        mWriteStatus = type == 1 ? true : false;
+        if (serialized.length > 4) {
+            mPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
+            mEncryptedPath = Arrays.copyOfRange(serialized, 12, serialized.length);
+        } else {
+            mEncryptedPath = null;
+        }
     }
 
+    @Override
     public long getPathID() {
         return mPathID;
     }
 
+    @Override
+    public void setPathID(long pathID) {
+        mPathID = pathID;
+    }
+
+    @Override
+    public byte[] getPathBytes() {
+        return mEncryptedPath;
+    }
+
+    @Override
+    public void setPathBytes(byte[] pathBytes) {
+        mEncryptedPath = pathBytes;
+    }
+
+    @Override
     public boolean getWriteStatus() {
         return mWriteStatus;
     }
 
-    public void setWriteStatus(boolean status) {
+    public void setIsWrite(boolean status) {
         mWriteStatus = status;
     }
 
@@ -73,7 +96,7 @@ public class ServerResponse {
      * @return
      */
     public static int getServerResponseSize() {
-        return Path.getPathSize() + 4;
+        return TaoPath.getPathSize() + 4;
     }
 
     public static int getServerResponseSizeWrite() {
@@ -83,6 +106,7 @@ public class ServerResponse {
      *
      * @return
      */
+    @Override
     public byte[] serialize() {
         int type = mWriteStatus ? 1 : 0;
         byte[] typeBytes = Ints.toByteArray(type);

@@ -1,5 +1,6 @@
 package TaoProxyTest;
 
+import Configuration.TaoConfigs;
 import TaoProxy.*;
 import org.junit.Assert;
 import org.junit.Test;
@@ -18,11 +19,11 @@ public class BlockPathComparatorTest {
         long targetPath = 0;
         TaoPositionMap map = new TaoPositionMap();
         Integer[] paths = new Integer[] {0, 8, 2, 1, 4};
-        TaoProxy.TREE_HEIGHT = 4;
+        TaoConfigs.TREE_HEIGHT = 4;
         ArrayList<Block> blocks = new ArrayList<>(paths.length);
 
         for (Integer i : paths) {
-            blocks.add(new Block((long) i));
+            blocks.add(new TaoBlock((long) i));
             map.setBlockPosition((long) i, (long) i);
         }
 

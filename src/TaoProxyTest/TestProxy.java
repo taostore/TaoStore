@@ -1,5 +1,7 @@
 package TaoProxyTest;
 
+import Messages.ClientRequest;
+import Messages.ServerResponse;
 import TaoProxy.*;
 
 import java.nio.channels.AsynchronousChannelGroup;
@@ -19,7 +21,7 @@ public class TestProxy implements Proxy {
     public TestProxy() {
         try {
             mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-            mProcessor = new TaoProcessor(this, mThreadGroup);
+          //  mProcessor = new TaoProcessor(this, mThreadGroup);
             mResponseReceived = false;
             mWaitLock = new Object();
         } catch (Exception e) {
@@ -45,7 +47,7 @@ public class TestProxy implements Proxy {
 //        }
     }
 
-    @Override
+  //  @Override
     public void notifySequencer(ClientRequest req, ServerResponse resp, byte[] data) {
 
     }

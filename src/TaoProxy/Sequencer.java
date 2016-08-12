@@ -1,5 +1,8 @@
 package TaoProxy;
 
+import Messages.ClientRequest;
+import Messages.ServerResponse;
+
 public interface Sequencer {
     /**
      * @brief

@@ -1,5 +1,8 @@
 package TaoProxy;
 
+import Messages.ClientRequest;
+import Messages.ServerResponse;
+
 /**
  * @brief
  */
@@ -17,8 +20,6 @@ public interface Proxy {
      * @param isFakeRead
      */
     void onReceiveResponse(ClientRequest request, ServerResponse response, boolean isFakeRead);
-
-    void notifySequencer(ClientRequest req, ServerResponse resp, byte[] data);
 
     /**
      * @brief Method to run proxy indefinitely

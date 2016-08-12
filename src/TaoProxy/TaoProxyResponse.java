@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Messages.ProxyResponse;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
@@ -7,9 +8,9 @@ import com.google.common.primitives.Longs;
 import java.util.Arrays;
 
 /**
- * @brief
+ * Created by ajmagat on 6/3/16.
  */
-public class ProxyResponse {
+public class TaoProxyResponse implements ProxyResponse {
     private long mClientRequestID;
     private byte[] mReturnData;
     private boolean mWriteStatus;
@@ -17,15 +18,17 @@ public class ProxyResponse {
     /**
      * @brief Default constructor
      */
-    public ProxyResponse() {
-
+    public TaoProxyResponse() {
+        mClientRequestID = -1;
+        mReturnData = new byte[Constants.BLOCK_SIZE];
+        mWriteStatus = false;
     }
 
     /**
      * @brief
      * @param clientRequestID
      */
-    public ProxyResponse(long clientRequestID) {
+    public TaoProxyResponse(long clientRequestID) {
         mClientRequestID = clientRequestID;
     }
 
@@ -34,7 +37,7 @@ public class ProxyResponse {
      * @param clientRequestID
      * @param returnData
      */
-    public ProxyResponse(long clientRequestID, byte[] returnData) {
+    public TaoProxyResponse(long clientRequestID, byte[] returnData) {
         mClientRequestID = clientRequestID;
         mReturnData = returnData;
         mWriteStatus = false;
@@ -45,7 +48,7 @@ public class ProxyResponse {
      * @param clientRequestID
      * @param writeStatus
      */
-    public ProxyResponse(long clientRequestID, boolean writeStatus) {
+    public TaoProxyResponse(long clientRequestID, boolean writeStatus) {
         mClientRequestID = clientRequestID;
         mReturnData = new byte[Constants.BLOCK_SIZE];
         mWriteStatus = writeStatus;
@@ -55,25 +58,21 @@ public class ProxyResponse {
      * @brief
      * @param serializedData
      */
-    public ProxyResponse(byte[] serializedData) {
-        initialize(serializedData);
+    public TaoProxyResponse(byte[] serializedData) {
+        initFromSerialized(serializedData);
     }
 
-    /**
-     * @brief
-     * @param serializedData
-     */
-    public void initialize(byte[] serializedData) {
+
+    public void initFromSerialized(byte[] serialized) {
         int startIndex = 0;
-        mClientRequestID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, startIndex, startIndex + 8));
+        mClientRequestID = Longs.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 8));
         startIndex += 8;
 
-        mReturnData = Arrays.copyOfRange(serializedData, startIndex, startIndex + Constants.BLOCK_SIZE);
+        mReturnData = Arrays.copyOfRange(serialized, startIndex, startIndex + Constants.BLOCK_SIZE);
         startIndex += Constants.BLOCK_SIZE;
 
-        int writeStatus = Ints.fromByteArray(Arrays.copyOfRange(serializedData, startIndex, startIndex + 4));
+        int writeStatus = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         mWriteStatus = writeStatus == 1 ? true : false;
-        System.out.println("Write status is " + mWriteStatus);
     }
 
     /**
@@ -84,6 +83,10 @@ public class ProxyResponse {
         return mClientRequestID;
     }
 
+    public void setClientRequestID(long requestID) {
+        mClientRequestID = requestID;
+    }
+
     /**
      * @brief
      * @return
@@ -92,12 +95,20 @@ public class ProxyResponse {
         return mReturnData;
     }
 
+    public void setReturnData(byte[] data) {
+        mReturnData = data;
+    }
+
     /**
      * @brief
      * @return
      */
     public boolean getWriteStatus() {
         return mWriteStatus;
+    }
+
+    public void setWriteStatus(boolean status) {
+        mWriteStatus = status;
     }
 
     /**
@@ -112,6 +123,7 @@ public class ProxyResponse {
      * @brief
      * @return
      */
+    @Override
     public byte[] serialize() {
         byte[] clientIDBytes = Longs.toByteArray(mClientRequestID);
         int writeStatusInt = mWriteStatus ? 1 : 0;

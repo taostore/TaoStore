@@ -1,5 +1,6 @@
 package TaoProxyTest;
 
+import Configuration.TaoConfigs;
 import TaoProxy.Block;
 import TaoProxy.Bucket;
 import TaoProxy.Constants;
@@ -28,46 +29,46 @@ public class PathTest {
     @Test
     public void testSerialize() {
         try {
-            // Set tree height
-            TaoProxy.TREE_HEIGHT = 4;
-
-            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-            keyGen.init(128); // for example
-            SecretKey secretKey = keyGen.generateKey();
-            SecretKey mKey = secretKey;
-            Utility.mSecretKey = mKey;
-
-
-            Bucket testBucket = new Bucket();
-            // Create blocks
-            Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
-            byte[] bytes = new byte[Constants.BLOCK_SIZE];
-            for (int i = 0; i < testBlocks.length; i++) {
-                testBlocks[i] = new Block(i);
-                Arrays.fill( bytes, (byte) i );
-                testBlocks[i].setData(bytes);
-                testBucket.addBlock(testBlocks[i], 1);
-            }
-
-            Path defaultPath = new Path(3);
-            defaultPath.addBucket(testBucket);
-            byte[] pathBytes = defaultPath.serialize();
-
-            long pathID = Longs.fromByteArray(Arrays.copyOfRange(pathBytes, 0, 8));
-            byte[] encryptedBuckets = Arrays.copyOfRange(pathBytes, 8, pathBytes.length);
-            System.out.println(pathID);
-            Path newPath = new Path(pathID, encryptedBuckets);
-
-            Bucket newBucket = newPath.getBucket(0);
-
-            Block[] newBlocks = newBucket.getBlocks();
-            for (int i = 0; i < newBlocks.length; i++) {
-                // Check the IDs of each block
-                assertEquals(testBlocks[i].getBlockID(), newBlocks[i].getBlockID());
-
-                // Check the data of each block
-                assertTrue(Arrays.equals(testBlocks[i].getData(), newBlocks[i].getData()));
-            }
+//            // Set tree height
+//            TaoConfigs.TREE_HEIGHT = 4;
+//
+//            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+//            keyGen.init(128); // for example
+//            SecretKey secretKey = keyGen.generateKey();
+//            SecretKey mKey = secretKey;
+//            Utility.mSecretKey = mKey;
+//
+//
+//            Bucket testBucket = new Bucket();
+//            // Create blocks
+//            Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
+//            byte[] bytes = new byte[Constants.BLOCK_SIZE];
+//            for (int i = 0; i < testBlocks.length; i++) {
+//                testBlocks[i] = new Block(i);
+//                Arrays.fill( bytes, (byte) i );
+//                testBlocks[i].setData(bytes);
+//                testBucket.addBlock(testBlocks[i], 1);
+//            }
+//
+//            Path defaultPath = new Path(3);
+//            defaultPath.addBucket(testBucket);
+//            byte[] pathBytes = defaultPath.serialize();
+//
+//            long pathID = Longs.fromByteArray(Arrays.copyOfRange(pathBytes, 0, 8));
+//            byte[] encryptedBuckets = Arrays.copyOfRange(pathBytes, 8, pathBytes.length);
+//            System.out.println(pathID);
+//            Path newPath = new Path(pathID, encryptedBuckets);
+//
+//            Bucket newBucket = newPath.getBucket(0);
+//
+//            Block[] newBlocks = newBucket.getBlocks();
+//            for (int i = 0; i < newBlocks.length; i++) {
+//                // Check the IDs of each block
+//                assertEquals(testBlocks[i].getBlockID(), newBlocks[i].getBlockID());
+//
+//                // Check the data of each block
+//                assertTrue(Arrays.equals(testBlocks[i].getData(), newBlocks[i].getData()));
+//            }
 //            // Create empty path
 //            long pathID = 9;
 //            Path testPath = new Path(pathID);

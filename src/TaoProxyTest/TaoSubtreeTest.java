@@ -1,8 +1,12 @@
 package TaoProxyTest;
 
+import Configuration.TaoConfigs;
 import TaoProxy.Path;
 import TaoProxy.Subtree;
+import TaoProxy.TaoPath;
 import TaoProxy.TaoProxy;
+import TaoProxy.TaoBlock;
+import TaoProxy.TaoBucket;
 import TaoProxy.TaoSubtree;
 import TaoProxy.Bucket;
 import TaoProxy.Block;
@@ -19,17 +23,17 @@ import static org.junit.Assert.*;
 public class TaoSubtreeTest {
     @Test
     public void testModify() {
-        Subtree testSubtree = new TaoSubtree();
+        long systemSize = 246420;
+        TaoConfigs.initConfiguration(systemSize);
 
-        // Set tree height
-        TaoProxy.TREE_HEIGHT = 4;
+        Subtree testSubtree = new TaoSubtree();
 
         // Create empty path
         long pathID = 9;
-        Path testPath = new Path(pathID);
+        Path testPath = new TaoPath(pathID);
 
         // Create empty buckets
-        Bucket[] testBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
+        Bucket[] testBuckets = new Bucket[TaoConfigs.TREE_HEIGHT + 1];
 
         // Fill in each bucket
         for (int i = 0; i < testBuckets.length; i++) {
@@ -37,11 +41,11 @@ public class TaoSubtreeTest {
             Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
             byte[] bytes = new byte[Constants.BLOCK_SIZE];
 
-            testBuckets[i] = new Bucket();
+            testBuckets[i] = new TaoBucket();
 
             for (int j = 0; j < testBlocks.length; j++) {
                 int blockID = Integer.parseInt(Integer.toString(i) + Integer.toString(j));
-                testBlocks[j] = new Block(blockID);
+                testBlocks[j] = new TaoBlock(blockID);
                 Arrays.fill(bytes, (byte) blockID);
                 testBlocks[j].setData(bytes);
 
@@ -53,34 +57,19 @@ public class TaoSubtreeTest {
 
         testSubtree.addPath(testPath);
 
-
         Path p1 = testSubtree.getPathToFlush(pathID);
         Bucket[] newBuckets = p1.getBuckets();
 
         for (int i = 0; i < newBuckets.length; i++) {
-            // Create blocks for bucket
-            Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
-            byte[] bytes = new byte[Constants.BLOCK_SIZE];
+            Block[] newBlocks = newBuckets[i].getBlocks();
+            Block[] testBlocks = testBuckets[i].getBlocks();
+            for (int j = 0; j < newBlocks.length; j++) {
+                // Check the IDs of each block
+                assertEquals(testBlocks[j].getBlockID(), newBlocks[j].getBlockID());
 
-            for (int j = 0; j < testBlocks.length; j++) {
-                int blockID = Integer.parseInt(Integer.toString(j) + Integer.toString(i));
-                testBlocks[j] = new Block(blockID);
-                Arrays.fill(bytes, (byte) blockID);
-                testBlocks[j].setData(bytes);
-
-                newBuckets[i].addBlock(testBlocks[j], 1);
+                // Check the data of each block
+                assertTrue(Arrays.equals(testBlocks[j].getData(), newBlocks[j].getData()));
             }
         }
-
-
-
-        Bucket[] newBuckets1 = testSubtree.getPath(pathID).getBuckets();
-
-        for (Bucket b : newBuckets1) {
-            for (Block b1 : b.getBlocks()) {
-                System.out.println("New block " + b1.getBlockID());
-            }
-        }
-
     }
 }

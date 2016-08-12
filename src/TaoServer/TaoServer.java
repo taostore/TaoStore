@@ -1,5 +1,10 @@
 package TaoServer;
 
+import Configuration.TaoConfigs;
+import Messages.MessageCreator;
+import Messages.MessageTypes;
+import Messages.ProxyRequest;
+import Messages.ServerResponse;
 import TaoProxy.*;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
@@ -21,30 +26,45 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public class TaoServer {
     // The file object the server will interact with
-    RandomAccessFile mDiskFile;
-
-    // The height of the tree
-    int mTreeHeight;
+    private RandomAccessFile mDiskFile;
 
     // The total amount of server storage in MB
-    long mServerSize;
+    private long mServerSize;
 
     // Read-write lock for bucket
     private final transient ReentrantReadWriteLock mRWL = new ReentrantReadWriteLock();
 
+    //
+    private MessageCreator mMessageCreator;
+
+
     /**
      * @brief Default constructor
      */
-    public TaoServer(long minServerSize) {
+    public TaoServer(long minServerSize, MessageCreator messageCreator) {
         try {
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
+            if ((numServers & -numServers) != numServers) {
+                // TODO: only use a power of two of the servers
+            }
+
+
             // Create file object which the server will interact with
-            mDiskFile = new RandomAccessFile(ServerConstants.ORAM_FILE, "rws");
+            mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rws");
+
+            mMessageCreator = messageCreator;
+
+            // Calculate the bucket size, including the IV and padding needed by AES
+           // mBucketSize = ServerUtility.calculateBucketSize();
 
             // Calculate the height of the tree
-            mTreeHeight = ServerUtility.calculateHeight(minServerSize);
+          //  mTreeHeight = ServerUtility.calculateHeight(minServerSize);
+
+            // Initialize needed constants
+            TaoConfigs.initConfiguration(minServerSize);
 
             // Calculate the total amount of space the tree will use
-            mServerSize = ServerUtility.calculateSize(mTreeHeight);
+            mServerSize = ServerUtility.calculateSize(TaoConfigs.TREE_HEIGHT, TaoConfigs.ENCRYPTED_BUCKET_SIZE);
 
             // Allocate space
             mDiskFile.setLength(mServerSize);
@@ -59,26 +79,24 @@ public class TaoServer {
      * @return the height of the tree
      */
     public int getHeight() {
-        return mTreeHeight;
+        return TaoConfigs.TREE_HEIGHT;
     }
 
     /**
      * @brief Method which will read the path with the specified pathID from disk and return the result
      * @param pathID
      * @return the bytes of the desired path
+     * TODO: add pathid here?
      */
     public byte[] readPath(long pathID) {
-        // Size of a bucket
-        long bucketSize = ServerConstants.BUCKET_SIZE;
-
         // Array of byte arrays (buckets expressed as byte array)
-        byte[][] pathInBytes = new byte[mTreeHeight + 1][];
+        byte[][] pathInBytes = new byte[TaoConfigs.TREE_HEIGHT + 1][];
         try {
             // Acquire read lock
             mRWL.readLock().lock();
 
             // Get the directions for this path
-            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mTreeHeight);
+            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
             // Variable to represent the offset into the disk file
             long offset = 0;
@@ -92,8 +110,10 @@ public class TaoServer {
             // Seek into the file
             mDiskFile.seek(offset);
 
+            int mBucketSize = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+
             // Allocate byte array for this bucket
-            pathInBytes[currentBucket] = new byte[(int)bucketSize];
+            pathInBytes[currentBucket] = new byte[mBucketSize];
 
             // Read bytes from the disk file into the byte array for this bucket
             mDiskFile.readFully(pathInBytes[currentBucket]);
@@ -105,18 +125,20 @@ public class TaoServer {
             for (Boolean right : pathDirection) {
                 // Navigate the array representing the tree
                 if (right) {
-                    offset = (2 * index + 2) * bucketSize;
-                    index = offset / bucketSize;
+                    TaoLogger.log("read right");
+                    offset = (2 * index + 2) * mBucketSize;
+                    index = offset / mBucketSize;
                 } else {
-                    offset = (2 * index + 1) * bucketSize;
-                    index = offset / bucketSize;
+                    TaoLogger.log("read left");
+                    offset = (2 * index + 1) * mBucketSize;
+                    index = offset / mBucketSize;
                 }
 
                 // Seek into file
                 mDiskFile.seek(offset);
 
                 // Allocate byte array for this bucket
-                pathInBytes[currentBucket] = new byte[(int)bucketSize];
+                pathInBytes[currentBucket] = new byte[mBucketSize];
 
                 // Read bytes from the disk file into the byte array for this bucket
                 mDiskFile.readFully(pathInBytes[currentBucket]);
@@ -136,6 +158,7 @@ public class TaoServer {
                 returnData = Bytes.concat(returnData, pathInBytes[i]);
             }
 
+            returnData = Bytes.concat(Longs.toByteArray(pathID), returnData);
             // Return complete path
             return returnData;
         } catch (Exception e) {
@@ -153,15 +176,12 @@ public class TaoServer {
      * @return if the write was successful or not
      */
     public boolean writePath(long pathID, byte[] data) {
-        // Size of a bucket
-        int bucketSize = (int) ServerConstants.BUCKET_SIZE;
-
         try {
             // Acquire write lock
             mRWL.writeLock().lock();
 
             // Get the directions for this path
-            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mTreeHeight);
+            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
             // Variable to represent the offset into the disk file
             long offsetInDisk = 0;
@@ -171,7 +191,9 @@ public class TaoServer {
 
             // Indices into the data byte array
             int dataIndexStart = 0;
-            int dataIndexStop = bucketSize;
+            int dataIndexStop = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+            TaoLogger.log("The dataIndexStart is " + dataIndexStart);
+            TaoLogger.log("The dataIndexStop is " + dataIndexStop);
 
             // Seek into the file
             mDiskFile.seek(offsetInDisk);
@@ -179,19 +201,24 @@ public class TaoServer {
             // Write bucket to disk
             mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
 
+            int mBucketSize = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
             // Increment indices
-            dataIndexStart += bucketSize;
-            dataIndexStop += bucketSize;
+            dataIndexStart += mBucketSize;
+            dataIndexStop += mBucketSize;
+          //  System.out.println("The dataIndexStart is " + dataIndexStart);
+          //  System.out.println("The dataIndexStop is " + dataIndexStop);
 
             // Write the rest of the buckets
             for (Boolean right : pathDirection) {
                 // Navigate the array representing the tree
                 if (right) {
-                    offsetInDisk = (2 * indexIntoTree + 2) * bucketSize;
-                    indexIntoTree = offsetInDisk / bucketSize;
+                    TaoLogger.log("write right");
+                    offsetInDisk = (2 * indexIntoTree + 2) * mBucketSize;
+                    indexIntoTree = offsetInDisk / mBucketSize;
                 } else {
-                    offsetInDisk = (2 * indexIntoTree + 1) * bucketSize;
-                    indexIntoTree = offsetInDisk / bucketSize;
+                    TaoLogger.log("write left");
+                    offsetInDisk = (2 * indexIntoTree + 1) * mBucketSize;
+                    indexIntoTree = offsetInDisk / mBucketSize;
                 }
 
                 // Seek into disk
@@ -203,8 +230,11 @@ public class TaoServer {
                 mDiskFile.write(dataToWrite);
 
                 // Increment indices
-                dataIndexStart += bucketSize;
-                dataIndexStop += bucketSize;
+                dataIndexStart += mBucketSize;
+                dataIndexStop += mBucketSize;
+
+               // System.out.println("The dataIndexStart is " + dataIndexStart);
+               // System.out.println("The dataIndexStop is " + dataIndexStop);
             }
 
             // Release the write lock
@@ -228,11 +258,11 @@ public class TaoServer {
         try {
             // Create a thread pool for asynchronous sockets
             AsynchronousChannelGroup threadGroup =
-                    AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+                    AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
 
             // Create a channel
             AsynchronousServerSocketChannel channel =
-                    AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(12345));
+                    AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(TaoConfigs.SERVER_PORT));
 
             // Asynchronously wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
@@ -279,23 +309,25 @@ public class TaoServer {
 
                                     // TODO: decryption of requestBytes
                                     // Create proxy read request from bytes
-                                    ProxyRequest proxyReq = new ProxyRequest(requestBytes);
+                                    ProxyRequest proxyReq = mMessageCreator.parseProxyRequestBytes(requestBytes);
 
                                     ByteBuffer messageTypeAndLengthBuffer = null;
                                     byte[] serializedResponse = null;
 
-                                    if (messageType == Constants.PROXY_READ_REQUEST) {
+                                    if (messageType == MessageTypes.PROXY_READ_REQUEST) {
                                         // Read the request path
                                         byte[] returnPathData = readPath(proxyReq.getPathID());
 
                                         // Create a server response
-                                        ServerResponse readResponse = new ServerResponse(proxyReq.getPathID(), returnPathData);
+                                        ServerResponse readResponse = mMessageCreator.createServerResponse();
+                                        readResponse.setPathID(proxyReq.getPathID());
+                                        readResponse.setPathBytes(returnPathData);
 
                                         // TODO: Encrypt the server response?
                                         // Send response to proxy
                                         serializedResponse = readResponse.serialize();
 
-                                        byte[] messageTypeBytes = Ints.toByteArray(Constants.SERVER_RESPONSE);
+                                        byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
                                         byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
 
                                         byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
@@ -303,11 +335,11 @@ public class TaoServer {
 
                                         // First we send the message type to the server along with the size of the message
 
-                                    } else if (messageType == Constants.PROXY_WRITE_REQUEST) {
+                                    } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
                                         // Write each path
                                         boolean success = true;
                                         byte[] dataToWrite = proxyReq.getDataToWrite();
-                                        System.out.println("The data to write is of size " + dataToWrite.length);
+
                                         int pathSize = proxyReq.getPathSize();
                                         int startIndex = 0;
                                         int endIndex = pathSize;
@@ -327,20 +359,20 @@ public class TaoServer {
                                         }
 
                                         // Create a server response
-                                        ServerResponse writeResponse = new ServerResponse();
-                                        writeResponse.setWriteStatus(success);
+                                        ServerResponse writeResponse = mMessageCreator.createServerResponse();
+                                        writeResponse.setIsWrite(success);
 
                                         // TODO: Encrypt the server response?
                                         // Send response to proxy
                                         serializedResponse = writeResponse.serialize();
 
                                         // First we send the message type to the server along with the size of the message
-                                        byte[] messageTypeBytes = Ints.toByteArray(Constants.SERVER_RESPONSE);
+                                        byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
                                         byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
 
                                         byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
                                         messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
-                                    } else if (messageType == Constants.PROXY_INITIALIZE_REQUEST) {
+                                    } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
                                         // Write each path
                                         boolean success = true;
                                         byte[] dataToWrite = proxyReq.getDataToWrite();
@@ -380,8 +412,6 @@ public class TaoServer {
 
                                         }
                                     });
-
-
                                 }
 
                                 @Override
@@ -416,7 +446,7 @@ public class TaoServer {
         }
 
         // Create server and run
-        TaoServer server = new TaoServer(Long.parseLong(args[0]));
+        TaoServer server = new TaoServer(Long.parseLong(args[0]), new TaoMessageCreator());
         server.run();
     }
 }

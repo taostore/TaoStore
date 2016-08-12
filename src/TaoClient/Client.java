@@ -1,8 +1,6 @@
 package TaoClient;
 
 
-import TaoProxy.ClientRequest;
-
 /**
  * Created by ajmagat on 4/12/16.
  */

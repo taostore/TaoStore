@@ -1,5 +1,10 @@
 package TaoProxy;
 
+import Messages.ClientRequest;
+import Messages.MessageCreator;
+import Messages.ProxyResponse;
+import Messages.ServerResponse;
+
 import java.io.DataOutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -11,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @brief The Sequencer makes sure that replies are sent to the client in the same order that requests were received
  */
-public class TaoSequencer implements Sequencer{
+public class TaoSequencer implements Sequencer {
     // Size of request queue
     private final static int QUEUE_SIZE = 1000;
 
@@ -22,10 +27,16 @@ public class TaoSequencer implements Sequencer{
     // Queue of the received requests
     private BlockingQueue<ClientRequest> mRequestQueue;
 
+    private PathCreator mBlockCreator;
+    private MessageCreator mMessageCreator;
+
     /**
      * @brief Default constructor for the TaoStore Sequencer
      */
-    public TaoSequencer() {
+    public TaoSequencer(MessageCreator messageCreator, PathCreator pathCreator) {
+        mMessageCreator = messageCreator;
+        mBlockCreator = pathCreator;
+
         // NOTE: ConcurrentHashMap is weakly consistent amongst different threads. Should be fine in this scenario
         mRequestMap = new ConcurrentHashMap<>();
         mRequestQueue = new ArrayBlockingQueue<>(QUEUE_SIZE);
@@ -38,7 +49,7 @@ public class TaoSequencer implements Sequencer{
     @Override
     public void onReceiveRequest(ClientRequest req) {
         // Create an empty block with null data
-        Block empty = new Block();
+        Block empty = mBlockCreator.createBlock();
         empty.setData(null);
 
         // Put request and new empty block into request map
@@ -51,7 +62,7 @@ public class TaoSequencer implements Sequencer{
     @Override
     public void onReceiveResponse(ClientRequest req, ServerResponse resp, byte[] data) {
         // Create a new block and set the data
-        Block b = new Block();
+        Block b = mBlockCreator.createBlock();
         b.setData(data);
 
         // Replace empty null block with new block
@@ -74,14 +85,21 @@ public class TaoSequencer implements Sequencer{
                     check = mRequestMap.get(req).getData();
                 }
 
-                System.out.println("Sequencer going to send response");
+                TaoLogger.log("Sequencer going to send response");
 
                 // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;
-                if (req.getType() == ClientRequest.READ) {
-                    response = new ProxyResponse(req.getRequestID(), mRequestMap.get(req).getData());
-                } else if (req.getType() == ClientRequest.WRITE) {
-                    response = new ProxyResponse(req.getRequestID(), true);
+                if (req.getType() == Constants.CLIENT_READ_REQUEST) {
+                    response = mMessageCreator.createProxyResponse();
+                    response.setClientRequestID(req.getRequestID());
+                    response.setReturnData(mRequestMap.get(req).getData());
+                            //new ProxyResponse(req.getRequestID(), mRequestMap.get(req).getData());
+                } else if (req.getType() == Constants.CLIENT_WRITE_REQUEST) {
+                    response = mMessageCreator.createProxyResponse();
+                    response.setClientRequestID(req.getRequestID());
+                    response.setWriteStatus(true);
+
+                            // new ProxyResponse(req.getRequestID(), true);
                 }
 
 //                System.out.print("Sequencer says message ");
@@ -96,7 +114,10 @@ public class TaoSequencer implements Sequencer{
                 Socket socket = new Socket(address.getHostName(), address.getPort());
 
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-                output.write(response.serializeAsMessage());
+                byte[] serializedResponse = response.serialize();
+                byte[] header = MessageUtility.createMessageHeaderBytes(Constants.PROXY_RESPONSE, serializedResponse.length);
+                output.write(header);
+                output.write(serializedResponse);
                 output.close();
                 socket.close();
         //        Thread.sleep(100);

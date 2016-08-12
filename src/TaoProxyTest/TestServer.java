@@ -64,32 +64,33 @@ public class TestServer {
     }
 
     public Path getFilledPath(long pathID) {
-        Path newPath = new Path(pathID);
-
-        // Create empty buckets
-        Bucket[] testBuckets = new Bucket[TaoProxy.TREE_HEIGHT + 1];
-
-        // Fill in each bucket
-        for (int i = 0; i < testBuckets.length; i++) {
-            // Create blocks for bucket
-            Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
-            byte[] bytes = new byte[Constants.BLOCK_SIZE];
-
-            testBuckets[i] = new Bucket();
-
-            for (int j = 0; j < testBlocks.length; j++) {
-                int blockID = Integer.parseInt(Integer.toString(i) + Integer.toString(j));
-                testBlocks[j] = new Block(blockID);
-                Arrays.fill(bytes, (byte) blockID);
-                testBlocks[j].setData(bytes);
-
-                testBuckets[i].addBlock(testBlocks[j], 1);
-            }
-
-            newPath.addBucket(testBuckets[i]);
-        }
-
-        return newPath;
+//        Path newPath = new Path(pathID);
+//
+//        // Create empty buckets
+//        Bucket[] testBuckets = new Bucket[TaoConfigs.TREE_HEIGHT + 1];
+//
+//        // Fill in each bucket
+//        for (int i = 0; i < testBuckets.length; i++) {
+//            // Create blocks for bucket
+//            Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
+//            byte[] bytes = new byte[Constants.BLOCK_SIZE];
+//
+//            testBuckets[i] = new Bucket();
+//
+//            for (int j = 0; j < testBlocks.length; j++) {
+//                int blockID = Integer.parseInt(Integer.toString(i) + Integer.toString(j));
+//                testBlocks[j] = new Block(blockID);
+//                Arrays.fill(bytes, (byte) blockID);
+//                testBlocks[j].setData(bytes);
+//
+//                testBuckets[i].addBlock(testBlocks[j], 1);
+//            }
+//
+//            newPath.addBucket(testBuckets[i]);
+//        }
+//
+//        return newPath;
+        return null;
     }
 
 }

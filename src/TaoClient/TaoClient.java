@@ -1,22 +1,18 @@
 package TaoClient;
 
-import TaoProxy.ClientRequest;
-import TaoProxy.Constants;
-import TaoProxy.ProxyRequest;
-import TaoProxy.ProxyResponse;
+import Configuration.TaoConfigs;
+import Messages.ClientRequest;
+import Messages.MessageCreator;
+import Messages.MessageTypes;
+import Messages.ProxyResponse;
+import TaoProxy.*;
 import com.google.common.primitives.Ints;
 
-import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.nio.channels.AsynchronousSocketChannel;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 /**
  * @brief Class to represent the client of TaoStore
@@ -24,14 +20,20 @@ import java.util.Arrays;
 public class TaoClient implements Client {
     private InetSocketAddress mProxyAddress;
     private InetSocketAddress mClientAddress;
+
+    // A MessageCreator to create different types of messages to be passed from client, proxy, and server
+    private MessageCreator mMessageCreator;
+
+    private PathCreator mPathCreator;
     private static int mRequestID = 0;
     /**
      * @brief Default constructor
      */
     public TaoClient() {
         // TODO: what should be default?
-        mProxyAddress = new InetSocketAddress("localhost", 12344);
-        mClientAddress = new InetSocketAddress("localhost", 12346);
+        mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
+        mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
+        mMessageCreator = new TaoMessageCreator();
     }
 
     /**
@@ -41,14 +43,15 @@ public class TaoClient implements Client {
      */
     public TaoClient(String proxyAddress, int proxyPort) {
         mProxyAddress = new InetSocketAddress(proxyAddress, proxyPort);
-        mClientAddress = new InetSocketAddress("localhost", 12346);
+        mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
+        mMessageCreator = new TaoMessageCreator();
     }
 
     @Override
     public byte[] read(long blockID) {
         try {
             // Send read request
-            ProxyResponse response = sendRequest(ClientRequest.READ, blockID, null);
+            ProxyResponse response = sendRequest(MessageTypes.CLIENT_READ_REQUEST, blockID, null);
 
             // Return read data
             return response.getReturnData();
@@ -63,7 +66,7 @@ public class TaoClient implements Client {
     public boolean write(long blockID, byte[] data) {
         try {
             // Send write request
-            ProxyResponse response = sendRequest(ClientRequest.WRITE, blockID, data);
+            ProxyResponse response = sendRequest(MessageTypes.CLIENT_WRITE_REQUEST, blockID, data);
             return response.getWriteStatus();
         } catch (Exception e) {
             e.printStackTrace();
@@ -77,7 +80,7 @@ public class TaoClient implements Client {
             Object wait = new Object();
 
             // Create an empty response
-            ProxyResponse proxyResponse = new ProxyResponse();
+            ProxyResponse proxyResponse = mMessageCreator.createProxyResponse();
 
             // Listen for a response to this request
             listenForResponse(wait, proxyResponse);
@@ -89,19 +92,28 @@ public class TaoClient implements Client {
             DataOutputStream output = new DataOutputStream(clientSocket.getOutputStream());
 
             // Create request
-            // TODO: generate random request ID
+            // TODO: generate random request ID, or just sequentially increase?
             long requestID = mRequestID;
             mRequestID++;
-            // Create client request
-            ClientRequest request = null;
-            if (type == ClientRequest.READ) {
-                request = new ClientRequest(blockID, ClientRequest.READ, requestID, mClientAddress);
-            } else if (type == ClientRequest.WRITE) {
-                 request = new ClientRequest(blockID, ClientRequest.WRITE, requestID, data, mClientAddress);
+            ClientRequest request = mMessageCreator.createClientRequest();
+            request.setBlockID(blockID);
+            request.setRequestID(requestID);
+            request.setClientAddress(mClientAddress);
+
+            if (type == MessageTypes.CLIENT_READ_REQUEST) {
+                request.setType(MessageTypes.CLIENT_READ_REQUEST);
+            } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
+                request.setType(MessageTypes.CLIENT_WRITE_REQUEST);
+                request.setData(data);
             }
 
             // Send request to proxy
-            output.write(request.serializeAsMessage());
+            byte[] serializedRequest = request.serialize();
+            TaoLogger.log("Serialized length is " + serializedRequest.length);
+            byte[] header = MessageUtility.createMessageHeaderBytes(request.getType(), serializedRequest.length);
+            TaoLogger.log("Header length is " + header.length);
+            output.write(header);
+            output.write(serializedRequest);
 
             // Close streams and ports
             clientSocket.close();
@@ -129,14 +141,19 @@ public class TaoClient implements Client {
                 Socket clientServerSocket = serverSocket.accept();
                 InputStream input = clientServerSocket.getInputStream();
 
-                byte[] protocolBytes = new byte[4];
-                input.read(protocolBytes, 0, protocolBytes.length);
-                int messageType = Ints.fromByteArray(protocolBytes);
-                if (messageType == Constants.PROXY_RESPONSE) {
-                    byte[] responseBytes = new byte[ProxyResponse.getProxyResponseSize()];
+                byte[] messageTypeBytes = new byte[4];
+                byte[] messageLengthBytes = new byte[4];
+                input.read(messageTypeBytes, 0, messageTypeBytes.length);
+                input.read(messageLengthBytes);
+
+                int messageType = Ints.fromByteArray(messageTypeBytes);
+                int messageLength = Ints.fromByteArray(messageLengthBytes);
+
+                if (messageType == MessageTypes.PROXY_RESPONSE) {
+                    byte[] responseBytes = new byte[messageLength];
                     input.read(responseBytes);
 
-                    proxyResponse.initialize(responseBytes);
+                    proxyResponse.initFromSerialized(responseBytes);
                 }
 
                 input.close();

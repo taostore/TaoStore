@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
 import com.google.common.primitives.Bytes;
 
 import javax.crypto.Cipher;
@@ -42,10 +43,10 @@ public class Utility {
 
     public static long getGreatestCommonLevel(long pathOne, long pathTwo) {
         // TODO: Check size
-        long indexBit = 1 << (TaoProxy.TREE_HEIGHT - 1);
+        long indexBit = 1 << (TaoConfigs.TREE_HEIGHT - 1);
         int greatestLevel = 0;
 
-        while (greatestLevel < TaoProxy.TREE_HEIGHT) {
+        while (greatestLevel < TaoConfigs.TREE_HEIGHT) {
             if ( (pathOne & indexBit) == (pathTwo & indexBit) ) {
                 indexBit = indexBit >> 1;
                 greatestLevel++;
