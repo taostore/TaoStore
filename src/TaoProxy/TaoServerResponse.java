@@ -13,6 +13,8 @@ import java.util.Arrays;
 public class TaoServerResponse implements ServerResponse {
     // Data for path that this response corresponds to
     private boolean mWriteStatus;
+
+    //
     private long mPathID;
     private byte[] mEncryptedPath;
 

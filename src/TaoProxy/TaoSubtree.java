@@ -16,6 +16,10 @@ public class TaoSubtree implements Subtree {
     // Map that maps a path ID to a path
     private SubtreeBucket mRoot;
 
+    // The last level that needs to be saved to subtree
+    // Every level greater than lastLevelToSave will be deleted when a path is deleted
+    private int lastLevelToSave;
+
     /**
      * @brief Default constructor
      */
@@ -26,12 +30,48 @@ public class TaoSubtree implements Subtree {
     @Override
     public void initRoot() {
         int numServers = TaoConfigs.PARTITION_SERVERS.size();
-        if ((numServers & -numServers) != numServers) {
-            // TODO: only use a power of two of the servers
+
+        // Check if we have more than one server, in which case we must initialize the subtree
+        if (numServers > 1) {
+            if ((numServers & -numServers) != numServers) {
+                // TODO: only use a power of two of the servers
+            }
+
+            lastLevelToSave = (numServers / 2) - 1;
+
+            // Initialize the needed amount of top nodes
+            mRoot = new TaoSubtreeBucket();
+
+
+            // Keep track of current level and bucket
+            int currentLevel = 1;
+            SubtreeBucket b = mRoot;
+
+            // If we need to save more than just the root, we do a recursive preorder
+            if (currentLevel < lastLevelToSave) {
+                recursivePreorderInit(b, currentLevel);
+            }
+        } else {
+            lastLevelToSave = -1;
+        }
+    }
+
+    /**
+     * @brief Private helper method to initialize the top of the tree in the case of storage partitioning
+     * @param b
+     * @param level
+     */
+    private void recursivePreorderInit(SubtreeBucket b, int level) {
+        b.setRight(null);
+        b.setLeft(null);
+        level++;
+
+        if (level >= lastLevelToSave) {
+            return;
         }
 
-        // Initialize the needed amount of top nodes
-        mRoot = new TaoSubtreeBucket();
+        recursivePreorderInit(b.getLeft(), level);
+        recursivePreorderInit(b.getRight(), level);
     }
 
     @Override
@@ -194,7 +234,7 @@ public class TaoSubtree implements Subtree {
         long timestamp = deleteChild(child, pathID, directions, level, minTime, pathReqMultiSet);
 
         // Check if we should delete the child
-        if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet)) {
+        if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet) && level > lastLevelToSave) {
             TaoLogger.log("Deleting because " + timestamp + " < " + minTime);
             // We should delete child, check if it was the right or left child
             if (directions[currentLevel]) {
@@ -239,15 +279,13 @@ public class TaoSubtree implements Subtree {
         // Get the directions for this path
         boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
-
-
         // Try to delete all descendents
         deleteChild(mRoot, pathID, pathDirection, 0, minTime, pathReqMultiSet);
 
         // Check if we can delete root
         // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
         // thus it should be okay to set mRoot to null
-        if (mRoot.getUpdateTime() <= minTime && ! pathReqMultiSet.contains(pathID)) {
+        if (mRoot.getUpdateTime() <= minTime && ! pathReqMultiSet.contains(pathID) && 0 > lastLevelToSave) {
             TaoLogger.log("** Deleting the root node too");
             mRoot = null;
         } else {

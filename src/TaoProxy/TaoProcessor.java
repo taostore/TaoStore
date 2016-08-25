@@ -7,6 +7,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Bytes;
+import com.google.common.primitives.Longs;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -73,6 +74,9 @@ public class TaoProcessor implements Processor {
     // PathCreator responsible for making empty blocks, buckets, and paths
     private PathCreator mPathCreator;
 
+    // A map that maps each leafID to the relative leaf ID it would have within a server partition
+    private Map<Long, Long> mRelativeLeafMapper;
+
     /**
      * @brief Default constructor
      */
@@ -108,12 +112,30 @@ public class TaoProcessor implements Processor {
         mWriteBackCounter = 0;
         mNextWriteBack = TaoConfigs.WRITE_BACK_THRESHOLD;
 
-        // Create queue of paths to be written
+        // Create list of queues of paths to be written
+        // The index into the list corresponds to the server at that same index in TaoConfigs.PARTITION_SERVERS
         mWriteQueue = new ConcurrentLinkedQueue<>();
 
         // Create position map
         // TODO: pass this in?
         mPositionMap = new TaoPositionMap(TaoConfigs.PARTITION_SERVERS);
+
+        // Map each leaf to a relative leaf for the servers
+        mRelativeLeafMapper = new HashMap<>();
+        int numServers = TaoConfigs.PARTITION_SERVERS.size();
+        int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
+        int leavesPerPartition = numLeaves / numServers;
+
+        for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
+            long j = i;
+            long relativeLeaf = 0;
+            while (j < i + leavesPerPartition) {
+                TaoLogger.logForce("1 Mapping absolute leaf " + j + " to relative leaf " + relativeLeaf);
+                mRelativeLeafMapper.put(j, relativeLeaf);
+                j++;
+                relativeLeaf++;
+            }
+        }
     }
 
     @Override
@@ -179,17 +201,21 @@ public class TaoProcessor implements Processor {
 
             // Create effectively final variables to use for inner classes
             // TODO: map this finalPathID to the relative leaf ID on partition server
+            long relativeFinalPathID = mRelativeLeafMapper.get(pathID);
+
             long finalPathID = pathID;
 
             // Asynchronously connect to server
             // TODO: Generalize this somehow
+            TaoLogger.log("About to read");
             channel.connect(hostAddress, null, new CompletionHandler<Void, Void>() {
                 @Override
                 public void completed(Void result, Void attachment) {
                     // Create a read request to send to server
                     // TODO: Do i need the request type?
+                    TaoLogger.log("About to make header");
                     ProxyRequest proxyRequest = mMessageCreator.createProxyRequest();
-                    proxyRequest.setPathID(finalPathID);
+                    proxyRequest.setPathID(relativeFinalPathID);
                     proxyRequest.setType(MessageTypes.PROXY_READ_REQUEST);
 
                     // Serialize request
@@ -198,15 +224,18 @@ public class TaoProcessor implements Processor {
                     // First we send the message type to the server along with the size of the message
                     ByteBuffer messageType = MessageUtility.createMessageTypeBuffer(MessageTypes.PROXY_READ_REQUEST, requestData.length);
 
+                    TaoLogger.log("About to send header");
                     // Asynchronously send message type and length to server
                     channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
                             // Write the rest of the request data to the server
+                            TaoLogger.log("About to send rest of message");
                             channel.write(ByteBuffer.wrap(requestData), null, new CompletionHandler<Integer, Void>() {
 
                                 @Override
                                 public void completed(Integer result, Void attachment) {
+                                    TaoLogger.log("Finished sending read request, going to listen for response");
                                     // Asynchronously read response type and size from server
                                     ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
 
@@ -214,6 +243,7 @@ public class TaoProcessor implements Processor {
 
                                         @Override
                                         public void completed(Integer result, Void attachment) {
+                                            TaoLogger.log("Received response header");
                                             // Flip the byte buffer for reading
                                             messageTypeAndSize.flip();
 
@@ -224,15 +254,17 @@ public class TaoProcessor implements Processor {
 
                                             // Asynchronously read response from server
                                             ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
+                                            TaoLogger.log("Going to receive rest of message");
                                             channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
                                                 @Override
                                                 public void completed(Integer result, Void attachment) {
+                                                    TaoLogger.log("Received first part of rest of message, remaining " + pathInBytes.remaining());
                                                     // Make sure we read all the bytes for the path
                                                     while (pathInBytes.remaining() > 0) {
                                                         channel.read(pathInBytes, null, this);
                                                         return;
                                                     }
-
+                                                    TaoLogger.log("Received entire message");
                                                     // Flip the byte buffer for reading
                                                     pathInBytes.flip();
 
@@ -245,6 +277,9 @@ public class TaoProcessor implements Processor {
                                                         // Create ServerResponse object based on data
                                                         ServerResponse response = mMessageCreator.createServerResponse();
                                                         response.initFromSerialized(serialized);
+
+                                                        // TODO: set proper path ID
+                                                        response.setPathID(finalPathID);
 
                                                         // Send response to proxy
                                                         mProxy.onReceiveResponse(req, response, fakeRead);
@@ -294,6 +329,8 @@ public class TaoProcessor implements Processor {
         // Decrypt response data
         byte[] encryptedPathBytes = resp.getPathBytes();
         Path decryptedPath = mCryptoUtil.decryptPath(encryptedPathBytes);
+        // Set the correct path ID
+        decryptedPath.setPathID(resp.getPathID());
 
         // Insert every bucket along path that is not in subtree into subtree
         mSubtree.addPath(decryptedPath);
@@ -519,7 +556,9 @@ public class TaoProcessor implements Processor {
         pathToFlush.unlockPath();
 
         // Add this path to the write queue
-        mWriteQueue.add(pathID);
+        synchronized (mWriteQueue) {
+            mWriteQueue.add(pathID);
+        }
     }
 
     /**
@@ -601,165 +640,211 @@ public class TaoProcessor implements Processor {
             }
         }
         mRequestMapLock.writeLock().unlock();
-
-        // Save path IDs that we will be popping off
-        long[] writePathIDs = new long[TaoConfigs.WRITE_BACK_THRESHOLD];
-
-        // Pop off pathIDs from write queue and retrieve corresponding paths from subtree
-
-        byte[] dataToWrite = null;
-        int pathSize = 0;
-        for(int i = 0; i < TaoConfigs.WRITE_BACK_THRESHOLD; i++) {
-            Path p = mSubtree.getPath(mWriteQueue.remove());
-
-            // TODO: map pathID of p to relative leaf in each server
-
-            if (dataToWrite == null) {
-                dataToWrite = mCryptoUtil.encryptPath(p);
-                pathSize = dataToWrite.length;
-            } else {
-                dataToWrite = Bytes.concat(dataToWrite, mCryptoUtil.encryptPath(p));
-            }
-
-            writePathIDs[i] = p.getID();
-        }
-        TaoLogger.logForce("Going to do writeback");
-
         try {
-            // TODO: do i need to set request type? Can just make datatowrite NULL for reads
-            ProxyRequest writebackRequest = mMessageCreator.createProxyRequest();
-            writebackRequest.setType(MessageTypes.PROXY_WRITE_REQUEST);
-            writebackRequest.setPathSize(pathSize);
-            writebackRequest.setDataToWrite(dataToWrite);
+            // TODO: use int to see if everyone has come back, create local lock to make sure no race condition
+            // TODO: possibly only go until serversReturned == the amount of servers that will be written to, not all of them
+            // We first lock mWriteQueue so we can get the current contents
+            // TODO: might not need to lock if we just get the first TaoConfigs.WRITE_BACK_THRESHOLD elements
 
-            byte[] encryptedWriteBackPaths = writebackRequest.serialize();
-            if (encryptedWriteBackPaths == null) {
-                TaoLogger.logForce("encryptedWriteBackPaths is null");
-            } else {
-                TaoLogger.logForce("encryptedWriteBackPaths is not null");
+            // Create a map that will map each InetSockerAddress to a list of paths that will be written to it
+            Map<InetSocketAddress, List<Long>> writebackMap = new HashMap<>();
+
+            List<Long> allWriteBackIDs = new ArrayList<>();
+            // Get the first TaoConfigs.WRITE_BACK_THRESHOLD from the mWriteQueue and place them in the map
+            for (int i = 0; i < TaoConfigs.WRITE_BACK_THRESHOLD; i++) {
+                // Get a path ID
+                Long currentID = mWriteQueue.remove();
+                allWriteBackIDs.add(currentID);
+                // Check what server is responsible for this path
+                InetSocketAddress isa = mPositionMap.getServerForPosition(currentID);
+
+                // Add this path ID to the map
+                List<Long> temp = writebackMap.get(isa);
+                if (temp == null) {
+                    temp = new ArrayList<>();
+                    writebackMap.put(isa, temp);
+                }
+                temp.add(currentID);
             }
 
-            // Write paths to server, wait for response
-            // Open up channel to server
-            // TODO: make way of changing server address
-            AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
-            InetSocketAddress hostAddress = new InetSocketAddress(TaoConfigs.SERVER_HOSTNAME, TaoConfigs.SERVER_PORT);
+            Integer serversToWrite = new Integer(0);
+            Integer serversReturned = new Integer(0);
+            int serverIndex = -1;
+            boolean[] serverDidReturn = new boolean[writebackMap.size()];
+            Object returnLock = new Object();
 
-            // Asynchronously connect to server
-            channel.connect(hostAddress, null, new CompletionHandler<Void, Void>() {
-                @Override
-                public void completed(Void result, Void attachment) {
+            // Now we will send the writeback request to each server
+            for (InetSocketAddress serverAddr : writebackMap.keySet()) {
+                serverIndex++;
+                final int serverIndexFinal = serverIndex;
+                // Get the list of paths to be written for the current server
+                List<Long> writebackPaths = writebackMap.get(serverAddr);
+                // TODO: this is the correct spot to continue code
 
-                    // First we send the message type to the server along with the size of the message
-                   // byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.PROXY_WRITE_REQUEST);
-                   // byte[] messageLengthBytes = Ints.toByteArray(encryptedWriteBackPaths.length);
+                // Save path IDs that we will be popping off
+                long[] writePathIDs = new long[writebackPaths.size()];
 
-                   // ByteBuffer messageType = ByteBuffer.wrap(Bytes.concat(messageTypeBytes, messageLengthBytes));
+                byte[] dataToWrite = null;
+                int pathSize = 0;
+                for (int i = 0; i < writePathIDs.length; i++) {
+                    Path p = mSubtree.getPath(writebackPaths.get(i));
 
-                    ByteBuffer messageType = MessageUtility.createMessageTypeBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
-                    // Asynchronously write to server
-                    channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
-                        @Override
-                        public void completed(Integer result, Void attachment) {
-                            // Now we send the rest of message to the server
-                            ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
+                    // TODO: need to shrink subtree path length
 
-                            // Asynchronously write to server
-                            channel.write(message, null, new CompletionHandler<Integer, Void>() {
-                                @Override
-                                public void completed(Integer result, Void attachment) {
-                                    // Asynchronously read response type and size from server
-                                    //ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
-                                    ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
-                                    channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
+                    if (dataToWrite == null) {
+                        dataToWrite = mCryptoUtil.encryptPath(p);
+                        pathSize = dataToWrite.length;
+                    } else {
+                        dataToWrite = Bytes.concat(dataToWrite, mCryptoUtil.encryptPath(p));
+                    }
 
-                                        @Override
-                                        public void completed(Integer result, Void attachment) {
-                                            // Flip the byte buffer for reading
-                                            messageTypeAndSize.flip();
+                    writePathIDs[i] = mRelativeLeafMapper.get(p.getID());
+                }
+                TaoLogger.logForce("Going to do writeback");
 
-                                            // Parse the message type and size from server
-//                                            byte[] messageTypeBytes = new byte[4];
-//                                            byte[] messageLengthBytes = new byte[4];
-//
-//                                            messageTypeAndSize.get(messageTypeBytes);
-//                                            messageTypeAndSize.get(messageLengthBytes);
-//
-//                                            int messageType = Ints.fromByteArray(messageTypeBytes);
-//                                            int messageLength = Ints.fromByteArray(messageLengthBytes);
 
-                                            int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
-                                            int messageType = typeAndLength[0];
-                                            int messageLength = typeAndLength[1];
+                // TODO: do i need to set request type? Can just make datatowrite NULL for reads
+                ProxyRequest writebackRequest = mMessageCreator.createProxyRequest();
+                writebackRequest.setType(MessageTypes.PROXY_WRITE_REQUEST);
+                writebackRequest.setPathSize(pathSize);
+                writebackRequest.setDataToWrite(dataToWrite);
 
-                                            if (messageType == MessageTypes.SERVER_RESPONSE) {
-                                                ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
-                                                channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
+                byte[] encryptedWriteBackPaths = writebackRequest.serialize();
+                if (encryptedWriteBackPaths == null) {
+                    TaoLogger.logForce("encryptedWriteBackPaths is null");
+                } else {
+                    TaoLogger.logForce("encryptedWriteBackPaths is not null");
+                }
 
-                                                    @Override
-                                                    public void completed(Integer result, Void attachment) {
-                                                        while(messageResponse.remaining() > 0) {
-                                                            channel.read(messageResponse);
-                                                        }
+                // Write paths to server, wait for response
+                // Open up channel to server
+                // TODO: make way of changing server address
+                AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
 
-                                                        messageResponse.flip();
+                // Asynchronously connect to server
+                channel.connect(serverAddr, null, new CompletionHandler<Void, Void>() {
+                    @Override
+                    public void completed(Void result, Void attachment) {
 
-                                                        byte[] serialized = new byte[messageLength];
-                                                        messageResponse.get(serialized);
+                        // First we send the message type to the server along with the size of the message
+                        ByteBuffer messageType = MessageUtility.createMessageTypeBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
 
-                                                        // Create ServerResponse based on data
-                                                        ServerResponse response = mMessageCreator.createServerResponse();
-                                                        response.initFromSerialized(serialized);
-                                                        //        new TaoServerResponse(responseData);
+                        // Asynchronously write to server
+                        channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
+                            @Override
+                            public void completed(Integer result, Void attachment) {
+                                // Now we send the rest of message to the server
+                                ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
 
-                                                        // Check to see if the write succeeded or not
-                                                        if (response.getWriteStatus()) {
-                                                            // Iterate through every path that was written, check if there are any nodes
-                                                            // we can delete
-                                                            for (Long pathID : writePathIDs) {
-                                                                // Upon response, delete all nodes in subtree whose timestamp
-                                                                // is <= timeStamp, and are not in mPathReqMultiSet
-                                                                // TODO: check if shallow or deep copy
-                                                                Set<Long> set = new HashSet<>();
-                                                                for (Long l : mPathReqMultiSet.elementSet()) {
-                                                                    set.add(l);
-                                                                }
-                                                                mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
+                                // Asynchronously write to server
+                                channel.write(message, null, new CompletionHandler<Integer, Void>() {
+                                    @Override
+                                    public void completed(Integer result, Void attachment) {
+                                        // Asynchronously read response type and size from server
+                                        //ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
+                                        ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
+                                        channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
+
+                                            @Override
+                                            public void completed(Integer result, Void attachment) {
+                                                // Flip the byte buffer for reading
+                                                messageTypeAndSize.flip();
+
+                                                // Parse the message type and size from server
+                                                int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
+                                                int messageType = typeAndLength[0];
+                                                int messageLength = typeAndLength[1];
+
+                                                if (messageType == MessageTypes.SERVER_RESPONSE) {
+                                                    // Read the response
+                                                    ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
+
+                                                    channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
+
+                                                        @Override
+                                                        public void completed(Integer result, Void attachment) {
+                                                            while (messageResponse.remaining() > 0) {
+                                                                channel.read(messageResponse);
                                                             }
-                                                        } else {
-                                                            // TODO: what happens on fail?
+
+                                                            messageResponse.flip();
+
+                                                            byte[] serialized = new byte[messageLength];
+                                                            messageResponse.get(serialized);
+
+                                                            // Create ServerResponse based on data
+                                                            ServerResponse response = mMessageCreator.createServerResponse();
+                                                            response.initFromSerialized(serialized);
+
+                                                            // Check to see if the write succeeded or not
+                                                            if (response.getWriteStatus()) {
+                                                                // TODO: save this until the final response is returned
+                                                                synchronized (returnLock) {
+                                                                    serverDidReturn[serverIndexFinal] = true;
+
+                                                                    boolean allReturn = true;
+
+                                                                    for (int n = 0; n < serverDidReturn.length; n++) {
+                                                                        if (! serverDidReturn[n]) {
+                                                                            allReturn = false;
+                                                                        }
+                                                                    }
+
+                                                                    if (allReturn) {
+                                                                        // Iterate through every path that was written, check if there are any nodes
+                                                                        // we can delete
+                                                                        for (Long pathID : allWriteBackIDs) {
+                                                                            // Upon response, delete all nodes in subtree whose timestamp
+                                                                            // is <= timeStamp, and are not in mPathReqMultiSet
+                                                                            // TODO: check if shallow or deep copy
+                                                                            Set<Long> set = new HashSet<>();
+                                                                            for (Long l : mPathReqMultiSet.elementSet()) {
+                                                                                set.add(l);
+                                                                            }
+                                                                            mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                // TODO: what happens on fail?
+                                                            }
                                                         }
-                                                    }
-                                                    @Override
-                                                    public void failed(Throwable exc, Void attachment) {
-                                                        // TODO: Implement?
-                                                    }
-                                                });
+
+                                                        @Override
+                                                        public void failed(Throwable exc, Void attachment) {
+                                                            // TODO: Implement?
+                                                        }
+                                                    });
+                                                }
                                             }
-                                        }
-                                        @Override
-                                        public void failed(Throwable exc, Void attachment) {
-                                            // TODO: Implement?
-                                        }
-                                    });
-                                }
-                                @Override
-                                public void failed(Throwable exc, Void attachment) {
-                                    // TODO: Implement?
-                                }
-                            });
-                        }
-                        @Override
-                        public void failed(Throwable exc, Void attachment) {
-                            // TODO: Implement?
-                        }
-                    });
-                }
-                @Override
-                public void failed(Throwable exc, Void attachment) {
-                    // TODO: Implement?
-                }
-            });
+
+                                            @Override
+                                            public void failed(Throwable exc, Void attachment) {
+                                                // TODO: Implement?
+                                            }
+                                        });
+                                    }
+
+                                    @Override
+                                    public void failed(Throwable exc, Void attachment) {
+                                        // TODO: Implement?
+                                    }
+                                });
+                            }
+
+                            @Override
+                            public void failed(Throwable exc, Void attachment) {
+                                // TODO: Implement?
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void failed(Throwable exc, Void attachment) {
+                        // TODO: Implement?
+                    }
+                });
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }

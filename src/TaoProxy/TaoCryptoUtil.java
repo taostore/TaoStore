@@ -65,6 +65,7 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] encryptPath(Path p) {
         try {
+            // TODO: Do no include the top of the tree in the case that there are multiple partitions
             byte[] idBytes = Longs.toByteArray(p.getID());
             byte[] bucketBytes = p.serializeBuckets();
 
@@ -72,9 +73,6 @@ public class TaoCryptoUtil implements CryptoUtil {
             TaoLogger.log("the bucket size in taocryptoutil is " + bucketSize);
             TaoLogger.log("calculated bucket size is " + TaoConfigs.ENCRYPTED_BUCKET_SIZE);
             // Encrypt the first bucket
-            // TODO: pad buckets for encryption
-            // byte[] encryptedBuckets = encrypt(Arrays.copyOfRange(bucketBytes, 0, bucketSize));
-//            byte[] unencryptedBucket = padBytes(Arrays.copyOfRange(bucketBytes, 0, bucketSize));
             byte[] unencryptedBucket = Arrays.copyOfRange(bucketBytes, 0, bucketSize);
 
             byte[] encryptedBuckets = encrypt(unencryptedBucket);
@@ -110,13 +108,34 @@ public class TaoCryptoUtil implements CryptoUtil {
 
     @Override
     public Path decryptPath(byte[] data) {
+        // TODO: Pad the front of data to account for the possibility that there are multiple partitions,
+        // TODO: which would mean the data would have less levels than expected
         try {
             long id = Longs.fromByteArray(Arrays.copyOfRange(data, 0, 8));
             Path p = new TaoPath(id);
           //  int metadata = 8;
             int bucketSize = TaoBucket.getBucketSize();
             int offset1 = 8;
-            for (int i = 0; i < TaoConfigs.TREE_HEIGHT + 1; i++) {
+
+            // Pad the front of the path
+            long fullPathSize = TaoConfigs.ENCRYPTED_BUCKET_SIZE * (TaoConfigs.TREE_HEIGHT + 1);
+            int numPadBuckets = 0;
+            int subtract_height = 0;
+            if (data.length - 8 < fullPathSize) {
+                TaoLogger.log("the path is short due to server partition");
+                // The length of data is not as large as would be required for a full path, so we must pad the front
+                // of the path with empty buckets
+                long difference = fullPathSize - (data.length - 8);
+                numPadBuckets = (int) (difference / TaoConfigs.ENCRYPTED_BUCKET_SIZE);
+                TaoLogger.log("We need to add an additional " + difference + " bytes, or " + numPadBuckets + " bucket(s)");
+
+                for (int i = 0; i < numPadBuckets; i++) {
+                    subtract_height++;
+                    p.addBucket(new TaoBucket());
+                }
+            }
+
+            for (int i = numPadBuckets; i < TaoConfigs.TREE_HEIGHT + 1 - subtract_height; i++) {
                 TaoLogger.log("decrypting bucket " + i + " of " + (TaoConfigs.TREE_HEIGHT + 1));
                 int offset = offset1 + i * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
                 byte[] kek = Arrays.copyOfRange(data, offset, (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE + offset);

@@ -37,17 +37,26 @@ public class TaoServer {
     //
     private MessageCreator mMessageCreator;
 
+    private int mServerTreeHeight;
 
     /**
      * @brief Default constructor
      */
     public TaoServer(long minServerSize, MessageCreator messageCreator) {
         try {
+            // Initialize needed constants
+            TaoConfigs.initConfiguration(minServerSize);
+
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
             if ((numServers & -numServers) != numServers) {
                 // TODO: only use a power of two of the servers
             }
 
+            mServerTreeHeight = TaoConfigs.TREE_HEIGHT;
+            if (numServers > 1) {
+                int levelSavedOnProxy = (numServers / 2);
+                mServerTreeHeight -= levelSavedOnProxy;
+            }
 
             // Create file object which the server will interact with
             mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rws");
@@ -60,11 +69,8 @@ public class TaoServer {
             // Calculate the height of the tree
           //  mTreeHeight = ServerUtility.calculateHeight(minServerSize);
 
-            // Initialize needed constants
-            TaoConfigs.initConfiguration(minServerSize);
-
             // Calculate the total amount of space the tree will use
-            mServerSize = ServerUtility.calculateSize(TaoConfigs.TREE_HEIGHT, TaoConfigs.ENCRYPTED_BUCKET_SIZE);
+            mServerSize = ServerUtility.calculateSize(mServerTreeHeight, TaoConfigs.ENCRYPTED_BUCKET_SIZE);
 
             // Allocate space
             mDiskFile.setLength(mServerSize);
@@ -79,7 +85,7 @@ public class TaoServer {
      * @return the height of the tree
      */
     public int getHeight() {
-        return TaoConfigs.TREE_HEIGHT;
+        return mServerTreeHeight;
     }
 
     /**
@@ -90,13 +96,13 @@ public class TaoServer {
      */
     public byte[] readPath(long pathID) {
         // Array of byte arrays (buckets expressed as byte array)
-        byte[][] pathInBytes = new byte[TaoConfigs.TREE_HEIGHT + 1][];
+        byte[][] pathInBytes = new byte[mServerTreeHeight + 1][];
         try {
             // Acquire read lock
             mRWL.readLock().lock();
 
             // Get the directions for this path
-            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
+            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mServerTreeHeight);
 
             // Variable to represent the offset into the disk file
             long offset = 0;
@@ -181,7 +187,7 @@ public class TaoServer {
             mRWL.writeLock().lock();
 
             // Get the directions for this path
-            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
+            boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mServerTreeHeight);
 
             // Variable to represent the offset into the disk file
             long offsetInDisk = 0;
@@ -264,11 +270,12 @@ public class TaoServer {
             AsynchronousServerSocketChannel channel =
                     AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(TaoConfigs.SERVER_PORT));
 
+            TaoLogger.log("Waiting for a connection");
             // Asynchronously wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
                 public void completed(AsynchronousSocketChannel ch, Void att){
-
+                    TaoLogger.log("Got a connection");
                     // Start listening for other connections
                     channel.accept(null, this);
 
@@ -279,6 +286,7 @@ public class TaoServer {
                     ch.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
+                            TaoLogger.log("Reading message");
                             // Flip buffer for reading
                             messageTypeAndSize.flip();
 
@@ -397,14 +405,28 @@ public class TaoServer {
 
                                     }
 
+                                    final int x = serializedResponse.length;
                                     ByteBuffer returnMessageBuffer = ByteBuffer.wrap(serializedResponse);
 
                                     ch.write(messageTypeAndLengthBuffer, null, new CompletionHandler<Integer, Void>() {
 
                                         @Override
                                         public void completed(Integer result, Void attachment) {
+                                            TaoLogger.log("writing a message of size " + x);
+                                            ch.write(returnMessageBuffer, null, new CompletionHandler<Integer, Void>() {
+                                                @Override
+                                                public void completed(Integer result, Void attachment) {
+                                                    if (returnMessageBuffer.remaining() > 0) {
+                                                        ch.write(returnMessageBuffer, null, this);
+                                                        return;
+                                                    }
+                                                }
 
-                                            ch.write(returnMessageBuffer);
+                                                @Override
+                                                public void failed(Throwable exc, Void attachment) {
+
+                                                }
+                                            });
                                         }
 
                                         @Override
@@ -439,6 +461,7 @@ public class TaoServer {
     }
 
     public static void main(String[] args) {
+        TaoLogger.logOn = true;
         // Make sure user provides a storage size
         if (args.length != 1) {
             System.out.println("Please provide desired size of storage in MB");

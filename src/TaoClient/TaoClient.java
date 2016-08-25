@@ -13,6 +13,8 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.Scanner;
 
 /**
  * @brief Class to represent the client of TaoStore
@@ -171,6 +173,68 @@ public class TaoClient implements Client {
     }
 
     public static void main(String[] args) {
+        TaoLogger.logOn = true;
+        long systemSize = 246420;
         TaoClient client = new TaoClient();
+        Scanner reader = new Scanner(System.in);
+        while (true) {
+            TaoLogger.log("W for write, R for read, Q for quit");
+            String option = reader.nextLine();
+
+            if (option.equals("Q")) {
+                break;
+            } else if (option.equals("W")) {
+                TaoLogger.log("Enter block ID to write to");
+                long blockID = reader.nextLong();
+
+                TaoLogger.log("Enter number to fill in block");
+                long fill = reader.nextLong();
+                byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
+                Arrays.fill(dataToWrite, (byte) fill);
+
+                TaoLogger.log("Going to send write request for " + blockID);
+                boolean writeStatus = client.write(blockID, dataToWrite);
+
+                if (writeStatus) {
+                    TaoLogger.log("Write succeeded");
+                } else {
+                    TaoLogger.log("Write did not succeed");
+                    System.exit(1);
+                }
+            } else if (option.equals("R")) {
+                TaoLogger.log("Enter block ID to read from");
+
+                long blockID = reader.nextLong();
+
+                TaoLogger.log("Going to send read request for " + blockID);
+                byte[] result = client.read(blockID);
+
+                TaoLogger.log("The result of the read is a block filled with the number " + result[0]);
+            }
+        }
+
+//        // Send write request
+//        long blockID = 3;
+//        byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
+//        Arrays.fill(dataToWrite, (byte) blockID);
+//        TaoLogger.log("@@@@@@@@@@@@ Going to send write request for " + blockID);
+//        boolean writeStatus = client.write(blockID, dataToWrite);
+//
+//        if (writeStatus) {
+//            TaoLogger.log("Write succeeded");
+//        } else {
+//            TaoLogger.log("Write did not succeed");
+//            System.exit(1);
+//        }
+//
+//        blockID = 3;
+//        TaoLogger.log("@@@@@@@@@@@@ Going to send read request for " + blockID);
+//        byte[] s = client.read(blockID);
+//
+//        if (Arrays.equals(dataToWrite, s)) {
+//            TaoLogger.log("The data was the same");
+//        } else {
+//            TaoLogger.log("The data was not the same");
+//        }
     }
 }

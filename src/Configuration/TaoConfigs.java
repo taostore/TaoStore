@@ -13,50 +13,19 @@ import java.util.List;
  * Created by ajmagat on 6/3/16.
  */
 public class TaoConfigs {
-
-  //  public static final int BUCKET_SIZE = 4;
-  //
-//    public static final int BLOCK_META_DATA_SIZE = 8;
-//    public static final int BLOCK_SIZE = 4096;
-//    public static final int TOTAL_BLOCK_SIZE = BLOCK_META_DATA_SIZE + BLOCK_SIZE;
-//
-//
-//
-//    public static final int KEY_SIZE = 128;
-//    public static final int IV_SIZE = 16;
-//
-//    // TODO: Make this user inputted data
-//    // Total data stored in server in MB
-//    public static final int TOTAL_STORED_DATA = 4186112;
-//
-//
-//    public static final int MAX_BYTE_BUFFER_SERVER = ProxyRequest.getProxyWriteRequestSize() + 4;
-//    public static final int MAX_BYTE_BUFFER_PROXY = ServerResponse.getServerResponseSize() + 4;
-//
-//    public static final int TYPE_SIZE = 4;
-//
-//    // Protocol
-//    public static final int CLIENT_REQUEST = 0;
-//    public static final int CLIENT_READ_REQUEST = 98;
-//    public static final int CLIENT_WRITE_REQUEST = 99;
-//    public static final int PROXY_READ_REQUEST = 1;
-//    public static final int PROXY_WRITE_REQUEST = 2;
-//    public static final int SERVER_RESPONSE = 3;
-//    public static final int PROXY_RESPONSE = 4;
-//    public static final int PROXY_INITIALIZE_REQUEST = 5;
-    public static final String ORAM_FILE = "/Users/ajmagat/Desktop/oram.txt";
+    public static final String ORAM_FILE = "oram.txt";
 
     public static final int PROXY_THREAD_COUNT = 10;
 
     public static final int WRITE_BACK_THRESHOLD = 46;
 
-    public static String CLIENT_HOSTNAME = "localhost";
+    public static String CLIENT_HOSTNAME = "10.138.0.2";
     public static int CLIENT_PORT = 12337;
 
-    public static String SERVER_HOSTNAME = "localhost";
+    public static String SERVER_HOSTNAME = "10.128.0.2";
     public static int SERVER_PORT = 12338;
 
-    public static String PROXY_HOSTNAME = "localhost";
+    public static String PROXY_HOSTNAME = "10.138.0.3";
     public static int PROXY_PORT = 12339;
 
 
@@ -75,7 +44,11 @@ public class TaoConfigs {
     public static int TREE_HEIGHT;
     public static long TOTAL_STORAGE_SIZE;
 
-    public static final List<InetSocketAddress> PARTITION_SERVERS = Arrays.asList(new InetSocketAddress("localhost", 12338));
+    public static final List<InetSocketAddress> PARTITION_SERVERS =
+            Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.3", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.5", SERVER_PORT));
     /**
      * @brief Static method to initialize constants
      * @param minServerSize

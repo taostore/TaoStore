@@ -43,6 +43,7 @@ public class TaoPositionMap implements PositionMap {
         for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
             long j = i;
             while (j < i + leavesPerServer) {
+                TaoLogger.log("skeddit assigning " + j + " to server " + storageServerAddresses.get(currentServer).getHostName());
                 mPartitionAddressMap.put(j, storageServerAddresses.get(currentServer));
                 j++;
             }
