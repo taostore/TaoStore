@@ -3,15 +3,18 @@ package TaoProxy;
 import Messages.ClientRequest;
 import Messages.ServerResponse;
 
+/**
+ * @brief Interface for Sequencer
+ */
 public interface Sequencer {
     /**
-     * @brief
+     * @brief Handle the receiving of a client request
      * @param req
      */
     void onReceiveRequest(ClientRequest req);
 
     /**
-     * @brief
+     * @brief Handle the receiving of a server response
      * @param resp
      */
     void onReceiveResponse(ClientRequest req, ServerResponse resp , byte[] data);

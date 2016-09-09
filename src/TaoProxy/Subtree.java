@@ -24,18 +24,31 @@ public interface Subtree {
     /**
      * @brief Method to get a bucket in the subtree the contains the specified block with block ID == blockID
      * @param blockID
-     * @return
+     * @return bucket that contains block with block id == blockID
      */
     Bucket getBucketWithBlock(long blockID);
 
     /**
-     * @brief Method that clears a path and returns it in order to be flushed
-     * @param pathID
-     * @return
+     * @brief Method that will let subtree know that block with block ID == blockID can be found in the provided bucket
+     * @param blockID
+     * @param bucket
      */
-    Path getPathToFlush(long pathID);
-
     void mapBlockToBucket(long blockID, Bucket bucket);
 
+    /**
+     * @brief Method to delete all nodes in path who have blocks not in the pathReqMultiSet and have not been updated
+     *        since minTime
+     * @param pathID
+     * @param minTime
+     * @param pathReqMultiSet
+     */
     void deleteNodes(long pathID, long minTime, Set<Long> pathReqMultiSet);
+
+    /**
+     * @brief Method to clear out a path
+     * @param pathID
+     */
+    void clearPath(long pathID);
+
+    void printSubtree();
 }

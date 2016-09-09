@@ -1,7 +1,7 @@
 package TaoProxy;
 
 /**
- * @brief Class to represent a path
+ * @brief Interface to represent a path
  */
 public interface Path {
     void initFromSerialized(byte[] serialized);
@@ -9,7 +9,7 @@ public interface Path {
     /**
      * @brief Method to add bucket into first empty level on path
      * @param bucket
-     * @return
+     * @return whether or not the adding was successful
      */
     boolean addBucket(Bucket bucket);
 
@@ -22,7 +22,7 @@ public interface Path {
 
     /**
      * @brief Accessor method to get all buckets in path
-     * @return mBuckets
+     * @return an array of all buckets in path
      */
     Bucket[] getBuckets();
 
@@ -35,12 +35,20 @@ public interface Path {
 
     /**
      * @brief Accessor method to get the path ID
-     * @return mID
+     * @return the path ID
      */
     long getID();
 
+    /**
+     * @brief Mutator method to set the path ID for this path
+     * @param pathID
+     */
     void setPathID(long pathID);
 
+    /**
+     * @brief Get the height of this path
+     * @return
+     */
     int getPathHeight();
 
     /**
@@ -56,9 +64,12 @@ public interface Path {
     byte[] serializeBuckets();
 
     /**
-     * @brief
+     * @brief Lock this path, disallowing others from modifying it
      */
     void lockPath();
 
+    /**
+     * @brief Unlock this path, allowing others to try and obtain lock
+     */
     void unlockPath();
 }

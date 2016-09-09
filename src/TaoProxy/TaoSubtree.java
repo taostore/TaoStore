@@ -1,10 +1,10 @@
 package TaoProxy;
 
 import Configuration.TaoConfigs;
-import com.google.common.collect.Multiset;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * @brief Class that represents the subtree component of the proxy
@@ -38,18 +38,19 @@ public class TaoSubtree implements Subtree {
             }
 
             lastLevelToSave = (numServers / 2) - 1;
-
+            TaoLogger.log("The last level to save is " + lastLevelToSave);
             // Initialize the needed amount of top nodes
-            mRoot = new TaoSubtreeBucket();
-
+            mRoot = new TaoSubtreeBucket(0);
 
             // Keep track of current level and bucket
             int currentLevel = 1;
             SubtreeBucket b = mRoot;
 
             // If we need to save more than just the root, we do a recursive preorder
-            if (currentLevel < lastLevelToSave) {
+            if (currentLevel <= lastLevelToSave) {
                 recursivePreorderInit(b, currentLevel);
+            } else {
+                TaoLogger.log("not saving anymore levels");
             }
         } else {
             lastLevelToSave = -1;
@@ -62,11 +63,11 @@ public class TaoSubtree implements Subtree {
      * @param level
      */
     private void recursivePreorderInit(SubtreeBucket b, int level) {
-        b.setRight(null);
-        b.setLeft(null);
+        b.setRight(null, level);
+        b.setLeft(null, level);
         level++;
 
-        if (level >= lastLevelToSave) {
+        if (level > lastLevelToSave) {
             return;
         }
 
@@ -99,7 +100,7 @@ public class TaoSubtree implements Subtree {
             // Determine whether the path is turning left or right from current bucket
             if (right) {
                 // Attempt to initialize right bucket
-                currentBucket.setRight(path.getBucket(i));
+                currentBucket.setRight(path.getBucket(i), i);
 
                 // Add blocks in bucket into map
                 List<Block> blocksToAdd = currentBucket.getFilledBlocks();
@@ -111,7 +112,7 @@ public class TaoSubtree implements Subtree {
                 currentBucket = currentBucket.getRight();
             } else {
                 // Attempt to initialize left bucket
-                currentBucket.setLeft(path.getBucket(i));
+                currentBucket.setLeft(path.getBucket(i), i);
 
                 // Add blocks in bucket into map
                 List<Block> blocksToAdd = currentBucket.getFilledBlocks();
@@ -122,7 +123,6 @@ public class TaoSubtree implements Subtree {
                 // Move to next bucket
                 currentBucket = currentBucket.getLeft();
             }
-
 
             i++;
         }
@@ -152,51 +152,17 @@ public class TaoSubtree implements Subtree {
         return returnPath;
     }
 
-    @Override
-    public Path getPathToFlush(long pathID) {
-        // Create path and insert the root of tree
-        Path returnPath = new TaoPath(pathID);
-
-        // Reset root bucket
-        resetBucket(mRoot);
-
-        // Add root bucket to the path
-        returnPath.addBucket(mRoot);
-
-        // Get the directions for this path
-        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
-
-        // Keep track of current bucket
-        SubtreeBucket currentBucket = mRoot;
-
-        // Reset each bucket along the path
-        for (Boolean right : pathDirection) {
-            // Get either the right or left child depending on the path
-            currentBucket = right ? currentBucket.getRight() : currentBucket.getLeft();
-
-            // Reset the bucket
-            resetBucket(currentBucket);
-
-            // Add bucket to the path
-            returnPath.addBucket(currentBucket);
-        }
-
-        // Return path
-        return returnPath;
-    }
-
     /**
-     * @brief Helper method to remove all the blocks in the bucket b from the block map and to clear the bucket
+     * @brief Helper method to remove all the blocks in the bucket b from the block map
      * @param b
      */
-    private void resetBucket(SubtreeBucket b) {
+    private void removeBucketMapping(SubtreeBucket b) {
         // Remove mappings for blockIDs in this bucket, as they will be reassigned
         for (Block block : b.getBlocks()) {
-            mBlockMap.remove(block.getBlockID());
+            if (block.getBlockID() != -1) {
+                mBlockMap.remove(block.getBlockID());
+            }
         }
-
-        // Clear bucket so that new blocks can be inserted
-        b.clearBucket();
     }
 
 
@@ -212,6 +178,7 @@ public class TaoSubtree implements Subtree {
      * @return
      */
     public long deleteChild(SubtreeBucket bucket, long pathID, boolean[] directions, int level, long minTime, Set<Long> pathReqMultiSet) {
+        // TODO: remove bucket from mBlockMap
         if (level >= directions.length) {
             return bucket.getUpdateTime();
         }
@@ -234,16 +201,21 @@ public class TaoSubtree implements Subtree {
         long timestamp = deleteChild(child, pathID, directions, level, minTime, pathReqMultiSet);
 
         // Check if we should delete the child
-        if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet) && level > lastLevelToSave) {
+        TaoLogger.log("The current level is " + currentLevel + " and the lastLevelToSave is " + lastLevelToSave);
+        if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet) && currentLevel > lastLevelToSave) {
             TaoLogger.log("Deleting because " + timestamp + " < " + minTime);
             // We should delete child, check if it was the right or left child
             if (directions[currentLevel]) {
                 TaoLogger.log("Going to delete the right child for path " + pathID + " at level " + currentLevel);
-                bucket.setRight(null);
+                removeBucketMapping(bucket.getRight());
+                bucket.setRight(null, currentLevel + 1);
             } else {
                 TaoLogger.log("Going to delete the left child for path " + pathID + " at level " + currentLevel);
-                bucket.setLeft(null);
+                removeBucketMapping(bucket.getLeft());
+                bucket.setLeft(null, currentLevel + 1);
             }
+        } else {
+            TaoLogger.log("Not going to delete the node at level " + currentLevel);
         }
 
         // Return timestamp of this bucket
@@ -270,6 +242,7 @@ public class TaoSubtree implements Subtree {
     @Override
     public void deleteNodes(long pathID, long minTime, Set<Long> pathReqMultiSet) {
         // TODO: need locks?
+
         // Check if subtree is empty
         if (mRoot == null) {
             // If mRoot is null, the tree will be reinitialized on the next write
@@ -289,11 +262,64 @@ public class TaoSubtree implements Subtree {
             TaoLogger.log("** Deleting the root node too");
             mRoot = null;
         } else {
-            TaoLogger.log("** Not deleting root node because either " + mRoot.getUpdateTime() + " > " + minTime + " or pathReqMultiSet.contains(" + pathID + ") is " + pathReqMultiSet.contains(pathID));
+            TaoLogger.log("** Not deleting root node");
         }
     }
 
     public void mapBlockToBucket(long blockID, Bucket bucket) {
         mBlockMap.put(blockID, bucket);
+    }
+
+    @Override
+    public void clearPath(long pathID) {
+        if (mRoot == null) {
+            return;
+        }
+        boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
+
+        // Keep track of current bucket
+        SubtreeBucket currentBucket = mRoot;
+
+        for (Boolean right : pathDirection) {
+            // Remove all block mappings to this bucket and clear the bucket
+            removeBucketMapping(currentBucket);
+            currentBucket.clearBucket();
+
+            // Determine whether the path is turning left or right from current bucket
+            if (right) {
+                // Move to next bucket
+                currentBucket = currentBucket.getRight();
+            } else {
+                // Move to next bucket
+                currentBucket = currentBucket.getLeft();
+            }
+        }
+
+        // Remove all block mappings to this bucket and clear the bucket
+        removeBucketMapping(currentBucket);
+        currentBucket.clearBucket();
+    }
+
+    @Override
+    public void printSubtree() {
+        Queue<SubtreeBucket> q = new ConcurrentLinkedQueue<>();
+
+        if (mRoot != null) {
+            q.add(mRoot);
+        }
+
+        while (! q.isEmpty()) {
+            SubtreeBucket b = q.poll();
+
+            if (b.getLeft() != null) {
+                q.add(b.getLeft());
+            }
+
+            if (b.getRight() != null) {
+                q.add(b.getRight());
+            }
+
+            b.print();
+        }
     }
 }

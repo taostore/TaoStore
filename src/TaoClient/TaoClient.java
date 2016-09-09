@@ -17,22 +17,26 @@ import java.util.Arrays;
 import java.util.Scanner;
 
 /**
- * @brief Class to represent the client of TaoStore
+ * @brief Class to represent a client of TaoStore
  */
 public class TaoClient implements Client {
+    // The address of the proxy
     private InetSocketAddress mProxyAddress;
+
+    // The address of this client
     private InetSocketAddress mClientAddress;
 
     // A MessageCreator to create different types of messages to be passed from client, proxy, and server
     private MessageCreator mMessageCreator;
 
-    private PathCreator mPathCreator;
+    // Counter to keep track of current request number
+    // Incremented after each request
     private static int mRequestID = 0;
+
     /**
      * @brief Default constructor
      */
     public TaoClient() {
-        // TODO: what should be default?
         mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
         mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
         mMessageCreator = new TaoMessageCreator();
@@ -76,7 +80,14 @@ public class TaoClient implements Client {
         return false;
     }
 
-    public ProxyResponse sendRequest(int type, long blockID, byte[] data) {
+    /**
+     * @brief Private helper method to send a read or write request to a TaoStore proxy
+     * @param type
+     * @param blockID
+     * @param data
+     * @return a ProxyResponse
+     */
+    private ProxyResponse sendRequest(int type, long blockID, byte[] data) {
         try {
             // Create object that will be used as a wait condition
             Object wait = new Object();
@@ -93,15 +104,20 @@ public class TaoClient implements Client {
             // Create output stream
             DataOutputStream output = new DataOutputStream(clientSocket.getOutputStream());
 
-            // Create request
+            // Create client request
+            ClientRequest request = mMessageCreator.createClientRequest();
+
+            // Create request id
             // TODO: generate random request ID, or just sequentially increase?
             long requestID = mRequestID;
             mRequestID++;
-            ClientRequest request = mMessageCreator.createClientRequest();
+
+            // Set data for request
             request.setBlockID(blockID);
             request.setRequestID(requestID);
             request.setClientAddress(mClientAddress);
 
+            // Set additional data depending on message type
             if (type == MessageTypes.CLIENT_READ_REQUEST) {
                 request.setType(MessageTypes.CLIENT_READ_REQUEST);
             } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
@@ -111,9 +127,7 @@ public class TaoClient implements Client {
 
             // Send request to proxy
             byte[] serializedRequest = request.serialize();
-            TaoLogger.log("Serialized length is " + serializedRequest.length);
             byte[] header = MessageUtility.createMessageHeaderBytes(request.getType(), serializedRequest.length);
-            TaoLogger.log("Header length is " + header.length);
             output.write(header);
             output.write(serializedRequest);
 
@@ -135,22 +149,32 @@ public class TaoClient implements Client {
         return null;
     }
 
-    public void listenForResponse(Object obj, ProxyResponse proxyResponse) {
-        // TODO: Might come out of order
+    /**
+     * @brief Private helper method that will wait for proxy responses
+     * @param obj
+     * @param proxyResponse
+     */
+    // TODO: Responses might come out of order, need to handle for this
+    private void listenForResponse(Object obj, ProxyResponse proxyResponse) {
+        // Create runnable to listen for a ProxyResponse
         Runnable r = () -> {
             try {
+                // Wait for connection from proxy
                 ServerSocket serverSocket = new ServerSocket(mClientAddress.getPort());
                 Socket clientServerSocket = serverSocket.accept();
+
+                // Get input
                 InputStream input = clientServerSocket.getInputStream();
 
+                // Get header information
                 byte[] messageTypeBytes = new byte[4];
                 byte[] messageLengthBytes = new byte[4];
                 input.read(messageTypeBytes, 0, messageTypeBytes.length);
                 input.read(messageLengthBytes);
-
                 int messageType = Ints.fromByteArray(messageTypeBytes);
                 int messageLength = Ints.fromByteArray(messageLengthBytes);
 
+                // If the message type if a proxy response, we parse the received data into a ProxyResponse
                 if (messageType == MessageTypes.PROXY_RESPONSE) {
                     byte[] responseBytes = new byte[messageLength];
                     input.read(responseBytes);
@@ -158,9 +182,12 @@ public class TaoClient implements Client {
                     proxyResponse.initFromSerialized(responseBytes);
                 }
 
+                // Close all streams
                 input.close();
                 clientServerSocket.close();
                 serverSocket.close();
+
+                // Notify waiting threads
                 synchronized (obj) {
                     obj.notifyAll();
                 }
@@ -169,16 +196,42 @@ public class TaoClient implements Client {
                 e.printStackTrace();
             }
         };
+
+        // Start runnable on new thread
         new Thread(r).start();
     }
 
+    @Override
+    public void printSubtree() {
+        try {
+            // Get proxy name and port
+            Socket clientSocket = new Socket(mProxyAddress.getHostName(), mProxyAddress.getPort());
+
+            // Create output stream
+            DataOutputStream output = new DataOutputStream(clientSocket.getOutputStream());
+
+            // Create client request
+            ClientRequest request = mMessageCreator.createClientRequest();
+            request.setType(MessageTypes.PRINT_SUBTREE);
+
+            byte[] serializedRequest = request.serialize();
+            byte[] header = MessageUtility.createMessageHeaderBytes(request.getType(), serializedRequest.length);
+            output.write(header);
+
+            // Close streams and ports
+            clientSocket.close();
+            output.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
     public static void main(String[] args) {
         TaoLogger.logOn = true;
         long systemSize = 246420;
         TaoClient client = new TaoClient();
         Scanner reader = new Scanner(System.in);
         while (true) {
-            TaoLogger.log("W for write, R for read, Q for quit");
+            TaoLogger.log("W for write, R for read, P for print, Q for quit");
             String option = reader.nextLine();
 
             if (option.equals("Q")) {
@@ -210,6 +263,8 @@ public class TaoClient implements Client {
                 byte[] result = client.read(blockID);
 
                 TaoLogger.log("The result of the read is a block filled with the number " + result[0]);
+            } else if (option.equals("P")) {
+                client.printSubtree();
             }
         }
 

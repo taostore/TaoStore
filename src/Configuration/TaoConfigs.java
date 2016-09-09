@@ -1,9 +1,6 @@
 package Configuration;
 
-import TaoProxy.Constants;
-import TaoProxy.TaoLogger;
 import TaoServer.ServerConstants;
-import TaoServer.ServerUtility;
 
 import java.net.InetSocketAddress;
 import java.util.Arrays;
@@ -17,7 +14,7 @@ public class TaoConfigs {
 
     public static final int PROXY_THREAD_COUNT = 10;
 
-    public static final int WRITE_BACK_THRESHOLD = 46;
+    public static final int WRITE_BACK_THRESHOLD = 3; //46;
 
     public static String CLIENT_HOSTNAME = "10.138.0.2";
     public static int CLIENT_PORT = 12337;
@@ -102,8 +99,8 @@ public class TaoConfigs {
 
         long newBucketSize = ServerConstants.BUCKET_SIZE;
 
-        if ((newBucketSize % Constants.IV_SIZE) != 0) {
-            newBucketSize += Constants.IV_SIZE - (newBucketSize % Constants.IV_SIZE);
+        if ((newBucketSize % TaoConfigs.IV_SIZE) != 0) {
+            newBucketSize += TaoConfigs.IV_SIZE - (newBucketSize % TaoConfigs.IV_SIZE);
         }
 
         ServerConstants.BUCKET_SIZE = newBucketSize;

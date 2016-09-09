@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Messages.MessageTypes;
 import Messages.ServerResponse;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
@@ -122,7 +123,7 @@ public class TaoServerResponse implements ServerResponse {
     }
 
     public byte[] serializeAsMessage() {
-        byte[] protocolByte = Ints.toByteArray(Constants.SERVER_RESPONSE);
+        byte[] protocolByte = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
 
         return Bytes.concat(protocolByte, serialize());
     }

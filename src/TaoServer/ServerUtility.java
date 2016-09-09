@@ -1,6 +1,6 @@
 package TaoServer;
 
-import TaoProxy.Constants;
+import Configuration.TaoConfigs;
 
 /**
  * Created by ajmagat on 4/20/16.
@@ -34,14 +34,14 @@ public class ServerUtility {
     public static long calculateBucketSize() {
         long updateTimeSize = 8;
         long blockBitmapSize = 4;
-        long initializationVecorSize = Constants.IV_SIZE;
-        long blocksInBucket = Constants.BUCKET_SIZE;
-        long totalBlockSize = Constants.TOTAL_BLOCK_SIZE;
+        long initializationVecorSize = TaoConfigs.IV_SIZE;
+        long blocksInBucket = TaoConfigs.BLOCKS_IN_BUCKET;
+        long totalBlockSize = TaoConfigs.TOTAL_BLOCK_SIZE;
 
         long bucketSize = updateTimeSize + blockBitmapSize + initializationVecorSize + (blocksInBucket * totalBlockSize);
 
-        if ((bucketSize % Constants.IV_SIZE) != 0) {
-            bucketSize += Constants.IV_SIZE - (bucketSize % Constants.IV_SIZE);
+        if ((bucketSize % TaoConfigs.IV_SIZE) != 0) {
+            bucketSize += TaoConfigs.IV_SIZE - (bucketSize % TaoConfigs.IV_SIZE);
         }
 
         return bucketSize;

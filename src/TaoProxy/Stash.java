@@ -3,7 +3,7 @@ package TaoProxy;
 import java.util.List;
 
 /**
- * Created by ajmagat on 6/26/16.
+ * Interface for Stash
  */
 public interface Stash {
     /**
@@ -18,7 +18,16 @@ public interface Stash {
      */
     void addBlock(Block b);
 
+    /**
+     * @brief Get the block with the corresponding block ID
+     * @param blockID
+     * @return block with a block id matching blockID
+     */
     Block getBlock(long blockID);
 
+    /**
+     * @brief Remove block from stash
+     * @param b
+     */
     void removeBlock(Block b);
 }

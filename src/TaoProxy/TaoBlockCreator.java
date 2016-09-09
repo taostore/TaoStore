@@ -1,9 +1,12 @@
 package TaoProxy;
 
 /**
- * Created by ajmagat on 7/6/16.
+ * @brief Implementation of a PathCreator to create valid empty blocks, buckets, and paths
  */
 public class TaoBlockCreator implements PathCreator {
+    /**
+     * @brief Default constructor
+     */
     public TaoBlockCreator() {
     }
 

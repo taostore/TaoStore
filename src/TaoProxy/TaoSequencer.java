@@ -1,9 +1,6 @@
 package TaoProxy;
 
-import Messages.ClientRequest;
-import Messages.MessageCreator;
-import Messages.ProxyResponse;
-import Messages.ServerResponse;
+import Messages.*;
 
 import java.io.DataOutputStream;
 import java.net.InetSocketAddress;
@@ -89,12 +86,12 @@ public class TaoSequencer implements Sequencer {
 
                 // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;
-                if (req.getType() == Constants.CLIENT_READ_REQUEST) {
+                if (req.getType() == MessageTypes.CLIENT_READ_REQUEST) {
                     response = mMessageCreator.createProxyResponse();
                     response.setClientRequestID(req.getRequestID());
                     response.setReturnData(mRequestMap.get(req).getData());
                             //new ProxyResponse(req.getRequestID(), mRequestMap.get(req).getData());
-                } else if (req.getType() == Constants.CLIENT_WRITE_REQUEST) {
+                } else if (req.getType() == MessageTypes.CLIENT_WRITE_REQUEST) {
                     response = mMessageCreator.createProxyResponse();
                     response.setClientRequestID(req.getRequestID());
                     response.setWriteStatus(true);
@@ -115,7 +112,7 @@ public class TaoSequencer implements Sequencer {
 
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream());
                 byte[] serializedResponse = response.serialize();
-                byte[] header = MessageUtility.createMessageHeaderBytes(Constants.PROXY_RESPONSE, serializedResponse.length);
+                byte[] header = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_RESPONSE, serializedResponse.length);
                 output.write(header);
                 output.write(serializedResponse);
                 output.close();

@@ -113,6 +113,7 @@ public class TaoProxy implements Proxy {
 
             // Get the total number of paths
             int totalPaths = 1 << TaoConfigs.TREE_HEIGHT;
+            TaoLogger.log("Tree height is " + TaoConfigs.TREE_HEIGHT);
             TaoLogger.log("Total paths " + totalPaths);
 
             // Variables to both hold the data of a path as well as how big the path is
@@ -222,6 +223,7 @@ public class TaoProxy implements Proxy {
                             int messageType = typeAndLength[0];
                             int messageLength = typeAndLength[1];
 
+                            TaoLogger.log("The message type is " + messageType);
                             // Serve message based on type
                             if (messageType == MessageTypes.CLIENT_WRITE_REQUEST || messageType == MessageTypes.CLIENT_READ_REQUEST) {
                                 // Get the rest of the message
@@ -258,6 +260,9 @@ public class TaoProxy implements Proxy {
                                     }
                                 });
 
+                            } else if (messageType == MessageTypes.PRINT_SUBTREE) {
+                                TaoLogger.log("Are we getting here?");
+                                mSubtree.printSubtree();
                             }
                         }
                         @Override
@@ -282,8 +287,17 @@ public class TaoProxy implements Proxy {
             System.out.println("Usage: Minimum size of storage server");
             System.exit(0);
         }
+
+        boolean shouldInitServer = true;
+        if (args.length == 2) {
+            shouldInitServer = false;
+        }
         // Create proxy and run
         TaoProxy proxy = new TaoProxy(Long.parseLong(args[0]), new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree());
-        proxy.initializeServer();
+
+        if (shouldInitServer) {
+            proxy.initializeServer();
+        }
+
     }
 }

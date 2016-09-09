@@ -13,13 +13,18 @@ import java.util.Arrays;
 import java.util.Random;
 
 /**
- * Created by ajmagat on 6/2/16.
+ * @brief Class to handle crypto related activities
  */
 public class TaoCryptoUtil implements CryptoUtil {
+    // Secret key for this class to use for encryption/decryption
     private SecretKey mSecretKey;
 
+    /**
+     * @brief Default constructor
+     */
     public TaoCryptoUtil() {
         try {
+            // Generate key
             KeyGenerator keyGen = KeyGenerator.getInstance("AES");
             keyGen.init(128);
             mSecretKey = keyGen.generateKey();
@@ -28,6 +33,10 @@ public class TaoCryptoUtil implements CryptoUtil {
         }
     }
 
+    /**
+     * @brief Construtor that takes in a pre-made secret key
+     * @param key
+     */
     public TaoCryptoUtil(SecretKey key) {
         mSecretKey = key;
     }
@@ -35,12 +44,11 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] encrypt(byte[] data) {
         try {
+            // Use AES encryption with padding
             Cipher c = Cipher.getInstance("AES/CBC/PKCS5PADDING");
             SecretKeySpec k = new SecretKeySpec(mSecretKey.getEncoded(), "AES");
             c.init(Cipher.ENCRYPT_MODE, k);
             byte[] encryptedData = c.doFinal(data);
-            TaoLogger.log("encrypted data before iv concat size " + encryptedData.length);
-            TaoLogger.log("iv size is " + c.getIV().length);
             return Bytes.concat(c.getIV(), encryptedData);
         } catch (Exception e) {
             e.printStackTrace();
@@ -51,7 +59,10 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] decrypt(byte[] encryptedData) {
         try {
+            // First get the initialization vector
             byte[] iv = Arrays.copyOfRange(encryptedData, 0, 16);
+
+            // Decrypt data
             SecretKeySpec k = new SecretKeySpec(mSecretKey.getEncoded(), "AES");
             Cipher c = Cipher.getInstance("AES/CBC/PKCS5PADDING");
             c.init(Cipher.DECRYPT_MODE, k, new IvParameterSpec(iv));
@@ -65,28 +76,56 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] encryptPath(Path p) {
         try {
-            // TODO: Do no include the top of the tree in the case that there are multiple partitions
+            // TODO: Do not include the top of the tree in the case that there are multiple partitions
+            // TODO: Have I done this? How is this code working?
             byte[] idBytes = Longs.toByteArray(p.getID());
             byte[] bucketBytes = p.serializeBuckets();
 
-            int bucketSize = TaoBucket.getBucketSize();
-            TaoLogger.log("the bucket size in taocryptoutil is " + bucketSize);
-            TaoLogger.log("calculated bucket size is " + TaoConfigs.ENCRYPTED_BUCKET_SIZE);
+            int bucketSize = TaoConfigs.BUCKET_SIZE;
+           // TaoLogger.log("the bucket size in taocryptoutil is " + bucketSize);
+           // TaoLogger.log("calculated bucket size is " + TaoConfigs.ENCRYPTED_BUCKET_SIZE);
             // Encrypt the first bucket
             byte[] unencryptedBucket = Arrays.copyOfRange(bucketBytes, 0, bucketSize);
 
             byte[] encryptedBuckets = encrypt(unencryptedBucket);
-            TaoLogger.log("first encrypted bucket has size " + encryptedBuckets.length);
+           // TaoLogger.log("first encrypted bucket has size " + encryptedBuckets.length);
 
-            TaoLogger.log("height of path is " + p.getPathHeight());
-            for (int i = 1; i < p.getPathHeight() +1; i++) {
+         //   TaoLogger.log("height of path is " + p.getPathHeight());
+            for (int i = 1; i < p.getPathHeight() + 1; i++) {
                 unencryptedBucket = Arrays.copyOfRange(bucketBytes, bucketSize * i , bucketSize + bucketSize * i);
-                TaoLogger.log("size of the unencrypted padded bucket is " + unencryptedBucket.length);
+            //    TaoLogger.log("size of the unencrypted padded bucket is " + unencryptedBucket.length);
                 byte[] temp = encrypt(unencryptedBucket);
-                TaoLogger.log("====== size of encrypted bucket is " + temp.length);
+          //      TaoLogger.log("====== size of encrypted bucket is " + temp.length);
                 encryptedBuckets = Bytes.concat(encryptedBuckets, temp);
             }
 
+            // Remove the top of the path
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
+
+            // Check if we have more than one server, in which case we must remove some of the bytes for the path
+            if (numServers > 1) {
+                if ((numServers & -numServers) != numServers) {
+                    // TODO: only use a power of two of the servers
+                }
+
+                int firstNeededEncryptedBucketStart = ((numServers / 2) - 1) + 1;
+                TaoLogger.log("The first bucket i think i need is " + firstNeededEncryptedBucketStart);
+                encryptedBuckets = Arrays.copyOfRange(encryptedBuckets, (int) (firstNeededEncryptedBucketStart * TaoConfigs.ENCRYPTED_BUCKET_SIZE), encryptedBuckets.length);
+            }
+
+            long amountOfEncryptedBuckets = encryptedBuckets.length / TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+            TaoLogger.log("Encrypted path has " + amountOfEncryptedBuckets + " encrypted buckets");
+
+
+//            TaoLogger.log("Can we decrypt?");
+//            for (int i = 0; i < 3; i++) {
+//                int offset = i * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+//                // Get serialized bucket from data
+//                byte[] serializedBucket = Arrays.copyOfRange(encryptedBuckets, offset, (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE + offset);
+//                // Decrypt the serialized bucket
+//                byte[] decryptedBucket = decrypt(serializedBucket);
+//            }
+//            System.exit(1);
             return Bytes.concat(idBytes, encryptedBuckets);
         } catch (Exception e) {
             e.printStackTrace();
@@ -94,33 +133,26 @@ public class TaoCryptoUtil implements CryptoUtil {
         return null;
     }
 
-    private byte[] padBytes(byte[] toPad) {
-        // TODO: when will i need this?
-        int neededPadding = ((int) TaoConfigs.ENCRYPTED_BUCKET_SIZE) - TaoConfigs.IV_SIZE - toPad.length;
-
-        if (neededPadding > 0) {
-            byte[] zeroBytes = new byte[neededPadding];
-            return Bytes.concat(toPad, zeroBytes);
-        } else {
-            return toPad;
-        }
-    }
-
     @Override
     public Path decryptPath(byte[] data) {
         // TODO: Pad the front of data to account for the possibility that there are multiple partitions,
         // TODO: which would mean the data would have less levels than expected
         try {
+            // Create a path
             long id = Longs.fromByteArray(Arrays.copyOfRange(data, 0, 8));
             Path p = new TaoPath(id);
-          //  int metadata = 8;
-            int bucketSize = TaoBucket.getBucketSize();
-            int offset1 = 8;
+
+            // Keep track of the size of an unencrypted bucket and the header that comes with the encrypted path
+            int bucketSize = TaoConfigs.BUCKET_SIZE;
+            int pathHeader = 8;
+
+            // Calculate the size of a full length encrypted path
+            long fullPathSize = TaoConfigs.ENCRYPTED_BUCKET_SIZE * (TaoConfigs.TREE_HEIGHT + 1);
+
+            // The amount of buckets that will need to be added to make data a full sized path
+            int numPadBuckets = 0;
 
             // Pad the front of the path
-            long fullPathSize = TaoConfigs.ENCRYPTED_BUCKET_SIZE * (TaoConfigs.TREE_HEIGHT + 1);
-            int numPadBuckets = 0;
-            int subtract_height = 0;
             if (data.length - 8 < fullPathSize) {
                 TaoLogger.log("the path is short due to server partition");
                 // The length of data is not as large as would be required for a full path, so we must pad the front
@@ -130,34 +162,43 @@ public class TaoCryptoUtil implements CryptoUtil {
                 TaoLogger.log("We need to add an additional " + difference + " bytes, or " + numPadBuckets + " bucket(s)");
 
                 for (int i = 0; i < numPadBuckets; i++) {
-                    subtract_height++;
                     p.addBucket(new TaoBucket());
                 }
             }
 
-            for (int i = numPadBuckets; i < TaoConfigs.TREE_HEIGHT + 1 - subtract_height; i++) {
+            for (int i = numPadBuckets; i < TaoConfigs.TREE_HEIGHT + 1; i++) {
                 TaoLogger.log("decrypting bucket " + i + " of " + (TaoConfigs.TREE_HEIGHT + 1));
-                int offset = offset1 + i * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
-                byte[] kek = Arrays.copyOfRange(data, offset, (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE + offset);
-                TaoLogger.log("encrypted bucket about to be decrypted has size " + kek.length);
-                byte[] decryptedBucket = decrypt(kek);
+                // Get offset into data
+                int offset = pathHeader + (i - numPadBuckets) * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+
+                // Get serialized bucket from data
+                byte[] serializedBucket = Arrays.copyOfRange(data, offset, (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE + offset);
+
+                TaoLogger.log("encrypted bucket about to be decrypted has size " + serializedBucket.length);
+
+                // Decrypt the serialized bucket
+                byte[] decryptedBucket = decrypt(serializedBucket);
+
+                // Cut off padding
                 decryptedBucket = Arrays.copyOf(decryptedBucket, bucketSize);
+
+
                 TaoLogger.log("decryptedBucket has size " + decryptedBucket.length);
+
+                // Add bucket to path
                 Bucket b = new TaoBucket();
                 b.initFromSerialized(decryptedBucket);
                 p.addBucket(b);
+            }
 
-                TaoLogger.log("Serialized path looks like ");
-               // int p = 0;
-                for (Block by : b.getBlocks()) {
-                   // for (byte byt : by.getData()) {
-                    TaoLogger.log("the block id here is " + by.getBlockID());
-                 //   }
-
-//                    p++;
+            TaoLogger.log("Serialized path looks like ");
+            int bucketNum = 0;
+            for (Bucket bk : p.getBuckets()) {
+                TaoLogger.log("\nBucket " + bucketNum);
+                for (Block bl : bk.getBlocks()) {
+                    TaoLogger.log("the block id here is " + bl.getBlockID());
                 }
-                TaoLogger.log();
-             //   System.exit(1);
+                bucketNum++;
             }
 
             return p;
@@ -167,11 +208,9 @@ public class TaoCryptoUtil implements CryptoUtil {
         return null;
     }
 
-
     @Override
     public int getRandomPathID() {
         Random r = new Random();
         return r.nextInt(1 << TaoConfigs.TREE_HEIGHT);
-        // return 0;
     }
 }

@@ -4,13 +4,11 @@ import Configuration.TaoConfigs;
 import TaoProxy.Path;
 import TaoProxy.Subtree;
 import TaoProxy.TaoPath;
-import TaoProxy.TaoProxy;
 import TaoProxy.TaoBlock;
 import TaoProxy.TaoBucket;
 import TaoProxy.TaoSubtree;
 import TaoProxy.Bucket;
 import TaoProxy.Block;
-import TaoProxy.Constants;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -38,8 +36,8 @@ public class TaoSubtreeTest {
         // Fill in each bucket
         for (int i = 0; i < testBuckets.length; i++) {
             // Create blocks for bucket
-            Block[] testBlocks = new Block[Constants.BUCKET_SIZE];
-            byte[] bytes = new byte[Constants.BLOCK_SIZE];
+            Block[] testBlocks = new Block[TaoConfigs.BLOCKS_IN_BUCKET];
+            byte[] bytes = new byte[TaoConfigs.BLOCK_SIZE];
 
             testBuckets[i] = new TaoBucket();
 
@@ -57,7 +55,7 @@ public class TaoSubtreeTest {
 
         testSubtree.addPath(testPath);
 
-        Path p1 = testSubtree.getPathToFlush(pathID);
+        Path p1 = testSubtree.getPath(pathID);
         Bucket[] newBuckets = p1.getBuckets();
 
         for (int i = 0; i < newBuckets.length; i++) {

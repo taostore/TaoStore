@@ -1,5 +1,7 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
+import Messages.MessageTypes;
 import Messages.ProxyRequest;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
@@ -62,11 +64,11 @@ public class TaoProxyRequest implements ProxyRequest {
     public TaoProxyRequest(byte[] serializedData) {
         mType = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 0, 4));
 
-        if (mType == Constants.PROXY_READ_REQUEST) {
+        if (mType == MessageTypes.PROXY_READ_REQUEST) {
             mReadPathID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 4, 12));
             mPathSize = -1;
             mDataToWrite = null;
-        } else if (mType == Constants.PROXY_WRITE_REQUEST) {
+        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST) {
             // TODO: Change this to not need paths anymore
             mReadPathID = -1;
             mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 4, 8));
@@ -91,14 +93,15 @@ public class TaoProxyRequest implements ProxyRequest {
         mType = type;
     }
 
+    @Override
     public void initFromSerialized(byte[] serialized) {
         mType = Ints.fromByteArray(Arrays.copyOfRange(serialized, 0, 4));
 
-        if (mType == Constants.PROXY_READ_REQUEST) {
+        if (mType == MessageTypes.PROXY_READ_REQUEST) {
             mReadPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
             mPathSize = -1;
             mDataToWrite = null;
-        } else if (mType == Constants.PROXY_WRITE_REQUEST) {
+        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST) {
             // TODO: Change this to not need paths anymore
             mReadPathID = -1;
             mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serialized, 4, 8));
@@ -141,7 +144,7 @@ public class TaoProxyRequest implements ProxyRequest {
     }
 
     public static int getProxyWriteRequestSize() {
-        return 4 + Constants.WRITE_BACK_THRESHOLD * TaoPath.getPathSize();
+        return 4 + TaoConfigs.WRITE_BACK_THRESHOLD * TaoPath.getPathSize();
     }
 
     /**
@@ -152,12 +155,12 @@ public class TaoProxyRequest implements ProxyRequest {
     public byte[] serialize() {
         byte[] returnData = null;
 
-        if (mType == Constants.PROXY_READ_REQUEST) {
+        if (mType == MessageTypes.PROXY_READ_REQUEST) {
             byte[] typeBytes = Ints.toByteArray(mType);
             byte[] pathBytes = Longs.toByteArray(mReadPathID);
 
             returnData = Bytes.concat(typeBytes, pathBytes);
-        } else if (mType == Constants.PROXY_WRITE_REQUEST) {
+        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST) {
             byte[] typeBytes = Ints.toByteArray(mType);
             byte[] pathSizeBytes = Ints.toByteArray(mPathSize);
 

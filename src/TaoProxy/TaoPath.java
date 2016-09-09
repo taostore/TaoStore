@@ -159,7 +159,7 @@ public class TaoPath implements Path {
     // TODO: Get rid of this
     public static int getPathSize() {
         int idSize = 8;
-        return idSize + (TaoConfigs.TREE_HEIGHT + 1) * TaoBucket.getBucketSize();
+        return idSize + (TaoConfigs.TREE_HEIGHT + 1) * TaoConfigs.BUCKET_SIZE;
     }
 
     @Override
@@ -181,7 +181,7 @@ public class TaoPath implements Path {
      */
     public byte[] serializeForDiskWrite() {
         byte[] returnData = new byte[TaoPath.getPathSize() - 8];
-        int entireBucketSize = TaoBucket.getBucketSize();
+        int entireBucketSize = TaoConfigs.BUCKET_SIZE;
 
         for(int i = 0; i < mBuckets.length; i++) {
             System.arraycopy(mBuckets[i].serialize(), 0, returnData, entireBucketSize * i, entireBucketSize);
@@ -193,7 +193,7 @@ public class TaoPath implements Path {
     @Override
     public byte[] serializeBuckets() {
         byte[] returnData = new byte[TaoPath.getPathSize() - 8];
-        int entireBucketSize = TaoBucket.getBucketSize();
+        int entireBucketSize = TaoConfigs.BUCKET_SIZE;
 
         for(int i = 0; i < mBuckets.length; i++) {
             System.arraycopy(mBuckets[i].serialize(), 0, returnData, entireBucketSize * i, entireBucketSize);

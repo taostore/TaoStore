@@ -1,5 +1,7 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
+import Messages.MessageTypes;
 import Messages.ProxyResponse;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
@@ -20,7 +22,7 @@ public class TaoProxyResponse implements ProxyResponse {
      */
     public TaoProxyResponse() {
         mClientRequestID = -1;
-        mReturnData = new byte[Constants.BLOCK_SIZE];
+        mReturnData = new byte[TaoConfigs.BLOCK_SIZE];
         mWriteStatus = false;
     }
 
@@ -50,7 +52,7 @@ public class TaoProxyResponse implements ProxyResponse {
      */
     public TaoProxyResponse(long clientRequestID, boolean writeStatus) {
         mClientRequestID = clientRequestID;
-        mReturnData = new byte[Constants.BLOCK_SIZE];
+        mReturnData = new byte[TaoConfigs.BLOCK_SIZE];
         mWriteStatus = writeStatus;
     }
 
@@ -68,8 +70,8 @@ public class TaoProxyResponse implements ProxyResponse {
         mClientRequestID = Longs.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 8));
         startIndex += 8;
 
-        mReturnData = Arrays.copyOfRange(serialized, startIndex, startIndex + Constants.BLOCK_SIZE);
-        startIndex += Constants.BLOCK_SIZE;
+        mReturnData = Arrays.copyOfRange(serialized, startIndex, startIndex + TaoConfigs.BLOCK_SIZE);
+        startIndex += TaoConfigs.BLOCK_SIZE;
 
         int writeStatus = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         mWriteStatus = writeStatus == 1 ? true : false;
@@ -116,7 +118,7 @@ public class TaoProxyResponse implements ProxyResponse {
      * @return
      */
     public static int getProxyResponseSize() {
-        return 8 + Constants.BLOCK_SIZE + 4;
+        return 8 + TaoConfigs.BLOCK_SIZE + 4;
     }
 
     /**
@@ -137,7 +139,7 @@ public class TaoProxyResponse implements ProxyResponse {
      */
     public byte[] serializeAsMessage() {
         byte[] serial = serialize();
-        byte[] protocolByte = Ints.toByteArray(Constants.PROXY_RESPONSE);
+        byte[] protocolByte = Ints.toByteArray(MessageTypes.PROXY_RESPONSE);
         return Bytes.concat(protocolByte, serial);
     }
 }

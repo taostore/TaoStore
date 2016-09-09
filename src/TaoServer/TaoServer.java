@@ -24,6 +24,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 /**
  * @brief Class to represent a server for TaoStore
  */
+// TODO: create interface
 public class TaoServer {
     // The file object the server will interact with
     private RandomAccessFile mDiskFile;
@@ -34,9 +35,10 @@ public class TaoServer {
     // Read-write lock for bucket
     private final transient ReentrantReadWriteLock mRWL = new ReentrantReadWriteLock();
 
-    //
+    // A MessageCreator to create different types of messages to be passed from client, proxy, and server
     private MessageCreator mMessageCreator;
 
+    // The height of the tree stored on this server
     private int mServerTreeHeight;
 
     /**
@@ -47,11 +49,13 @@ public class TaoServer {
             // Initialize needed constants
             TaoConfigs.initConfiguration(minServerSize);
 
+            // Mke sure the amount of servers being used are a power of 2
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
             if ((numServers & -numServers) != numServers) {
                 // TODO: only use a power of two of the servers
             }
 
+            // Calculate the tree height
             mServerTreeHeight = TaoConfigs.TREE_HEIGHT;
             if (numServers > 1) {
                 int levelSavedOnProxy = (numServers / 2);
@@ -61,13 +65,8 @@ public class TaoServer {
             // Create file object which the server will interact with
             mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rws");
 
+            // Assign message creator
             mMessageCreator = messageCreator;
-
-            // Calculate the bucket size, including the IV and padding needed by AES
-           // mBucketSize = ServerUtility.calculateBucketSize();
-
-            // Calculate the height of the tree
-          //  mTreeHeight = ServerUtility.calculateHeight(minServerSize);
 
             // Calculate the total amount of space the tree will use
             mServerSize = ServerUtility.calculateSize(mServerTreeHeight, TaoConfigs.ENCRYPTED_BUCKET_SIZE);
@@ -81,18 +80,9 @@ public class TaoServer {
     }
 
     /**
-     * @brief Accessor for mTreeHeight
-     * @return the height of the tree
-     */
-    public int getHeight() {
-        return mServerTreeHeight;
-    }
-
-    /**
      * @brief Method which will read the path with the specified pathID from disk and return the result
      * @param pathID
      * @return the bytes of the desired path
-     * TODO: add pathid here?
      */
     public byte[] readPath(long pathID) {
         // Array of byte arrays (buckets expressed as byte array)
@@ -208,11 +198,11 @@ public class TaoServer {
             mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
 
             int mBucketSize = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+
             // Increment indices
             dataIndexStart += mBucketSize;
             dataIndexStop += mBucketSize;
-          //  System.out.println("The dataIndexStart is " + dataIndexStart);
-          //  System.out.println("The dataIndexStop is " + dataIndexStop);
+
 
             // Write the rest of the buckets
             for (Boolean right : pathDirection) {
@@ -239,14 +229,11 @@ public class TaoServer {
                 dataIndexStart += mBucketSize;
                 dataIndexStop += mBucketSize;
 
-               // System.out.println("The dataIndexStart is " + dataIndexStart);
-               // System.out.println("The dataIndexStop is " + dataIndexStop);
             }
 
             // Release the write lock
             mRWL.writeLock().unlock();
 
-         //   System.exit(1);
             // Return true, signaling that the write was successful
             return true;
         } catch (Exception e) {
@@ -275,7 +262,7 @@ public class TaoServer {
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
                 public void completed(AsynchronousSocketChannel ch, Void att){
-                    TaoLogger.log("Got a connection");
+                    TaoLogger.log("---!!!--- GOT A CONNECTION ---!!!---");
                     // Start listening for other connections
                     channel.accept(null, this);
 
@@ -293,36 +280,38 @@ public class TaoServer {
                             // Parse the message type and size from server
                             byte[] messageTypeBytes = new byte[4];
                             byte[] messageLengthBytes = new byte[4];
-
                             messageTypeAndSize.get(messageTypeBytes);
                             messageTypeAndSize.get(messageLengthBytes);
-
                             int messageType = Ints.fromByteArray(messageTypeBytes);
                             int messageLength = Ints.fromByteArray(messageLengthBytes);
 
+                            // Receive rest of message
                             ByteBuffer message = ByteBuffer.allocate(messageLength);
                             ch.read(message, null, new CompletionHandler<Integer, Void>() {
                                 @Override
                                 public void completed(Integer result, Void attachment) {
-
+                                    // Makre sure to read entire message
                                     while (message.remaining() > 0) {
                                         ch.read(message, null, this);
                                         return;
                                     }
 
+                                    // Flip buffer for reading
                                     message.flip();
 
+                                    // Get bytes from message
                                     byte[] requestBytes = new byte[messageLength];
                                     message.get(requestBytes);
 
-                                    // TODO: decryption of requestBytes
                                     // Create proxy read request from bytes
                                     ProxyRequest proxyReq = mMessageCreator.parseProxyRequestBytes(requestBytes);
 
                                     ByteBuffer messageTypeAndLengthBuffer = null;
                                     byte[] serializedResponse = null;
 
+                                    // Check message type
                                     if (messageType == MessageTypes.PROXY_READ_REQUEST) {
+                                        TaoLogger.log("Serving a read request");
                                         // Read the request path
                                         byte[] returnPathData = readPath(proxyReq.getPathID());
 
@@ -331,7 +320,6 @@ public class TaoServer {
                                         readResponse.setPathID(proxyReq.getPathID());
                                         readResponse.setPathBytes(returnPathData);
 
-                                        // TODO: Encrypt the server response?
                                         // Send response to proxy
                                         serializedResponse = readResponse.serialize();
 
@@ -340,10 +328,8 @@ public class TaoServer {
 
                                         byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
                                         messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
-
-                                        // First we send the message type to the server along with the size of the message
-
                                     } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
+                                        TaoLogger.log("Serving a write request");
                                         // Write each path
                                         boolean success = true;
                                         byte[] dataToWrite = proxyReq.getDataToWrite();
@@ -370,7 +356,6 @@ public class TaoServer {
                                         ServerResponse writeResponse = mMessageCreator.createServerResponse();
                                         writeResponse.setIsWrite(success);
 
-                                        // TODO: Encrypt the server response?
                                         // Send response to proxy
                                         serializedResponse = writeResponse.serialize();
 
@@ -408,48 +393,45 @@ public class TaoServer {
                                     final int x = serializedResponse.length;
                                     ByteBuffer returnMessageBuffer = ByteBuffer.wrap(serializedResponse);
 
+                                    // First we send the message type to the proxy along with the size of the message
                                     ch.write(messageTypeAndLengthBuffer, null, new CompletionHandler<Integer, Void>() {
-
                                         @Override
                                         public void completed(Integer result, Void attachment) {
                                             TaoLogger.log("writing a message of size " + x);
+                                            // Send message
                                             ch.write(returnMessageBuffer, null, new CompletionHandler<Integer, Void>() {
                                                 @Override
                                                 public void completed(Integer result, Void attachment) {
+                                                    // Make sure we sent all data
                                                     if (returnMessageBuffer.remaining() > 0) {
                                                         ch.write(returnMessageBuffer, null, this);
                                                         return;
                                                     }
                                                 }
-
                                                 @Override
                                                 public void failed(Throwable exc, Void attachment) {
 
                                                 }
                                             });
                                         }
-
                                         @Override
                                         public void failed(Throwable exc, Void attachment) {
 
                                         }
                                     });
                                 }
-
                                 @Override
                                 public void failed(Throwable exc, Void attachment) {
                                     // TODO: Implement?
                                 }
                             });
                         }
-
                         @Override
                         public void failed(Throwable exc, Void attachment) {
                             // TODO: Implement?
                         }
                     });
                 }
-
                 @Override
                 public void failed(Throwable exc, Void att) {
                     // TODO: Implement?

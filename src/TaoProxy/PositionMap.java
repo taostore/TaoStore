@@ -3,7 +3,7 @@ package TaoProxy;
 import java.net.InetSocketAddress;
 
 /**
- * Created by ajmagat on 6/26/16.
+ * Interface for position map
  */
 public interface PositionMap {
     /**
@@ -21,9 +21,9 @@ public interface PositionMap {
     long getBlockPosition(long blockID);
 
     /**
-     *
+     * @brief Method to return the address of the server that contains the path corresponding to leaf id
      * @param leafID
-     * @return
+     * @return an InetSocketAddress
      */
     InetSocketAddress getServerForPosition(long leafID);
 }

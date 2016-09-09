@@ -222,7 +222,7 @@ public class TaoProcessor implements Processor {
                     byte[] requestData = proxyRequest.serialize();
 
                     // First we send the message type to the server along with the size of the message
-                    ByteBuffer messageType = MessageUtility.createMessageTypeBuffer(MessageTypes.PROXY_READ_REQUEST, requestData.length);
+                    ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_READ_REQUEST, requestData.length);
 
                     TaoLogger.log("About to send header");
                     // Asynchronously send message type and length to server
@@ -504,6 +504,8 @@ public class TaoProcessor implements Processor {
         // Get a heap based on the block's path ID when compared to the target path ID
         PriorityQueue<Block> blockHeap = getHeap(pathID);
 
+
+
         // Clear each bucket
         for (int i = 0; i < pathToFlush.getPathHeight() + 1; i++) {
             pathToFlush.getBucket(i).clearBucket();
@@ -513,16 +515,20 @@ public class TaoProcessor implements Processor {
         Block currentBlock;
         int level = TaoConfigs.TREE_HEIGHT;
 
+        TaoLogger.log("About to go through blockHeap");
         // Flush path
         while (! blockHeap.isEmpty() && level >= 0) {
             // Get block at top of heap
             currentBlock = blockHeap.peek();
-
+            TaoLogger.log("Looking at block id " + currentBlock.getBlockID());
             // Find the path ID that this block maps to
             long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
+            TaoLogger.log("The path it is mapped to is " + pid);
+            TaoLogger.log("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
 
             // Check if this block can be inserted at this level
             if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
+                TaoLogger.log("We can insert " + currentBlock.getBlockID() + " at level " + level);
                 // If the block can be inserted at this level, get the bucket
                 Bucket pathBucket = pathToFlush.getBucket(level);
 
@@ -649,12 +655,15 @@ public class TaoProcessor implements Processor {
             // Create a map that will map each InetSockerAddress to a list of paths that will be written to it
             Map<InetSocketAddress, List<Long>> writebackMap = new HashMap<>();
 
+            // Needed in order to clean up subtree later
             List<Long> allWriteBackIDs = new ArrayList<>();
             // Get the first TaoConfigs.WRITE_BACK_THRESHOLD from the mWriteQueue and place them in the map
             for (int i = 0; i < TaoConfigs.WRITE_BACK_THRESHOLD; i++) {
                 // Get a path ID
                 Long currentID = mWriteQueue.remove();
+                TaoLogger.log("Writeback for path id " + currentID + " is mapped to ");
                 allWriteBackIDs.add(currentID);
+
                 // Check what server is responsible for this path
                 InetSocketAddress isa = mPositionMap.getServerForPosition(currentID);
 
@@ -667,27 +676,25 @@ public class TaoProcessor implements Processor {
                 temp.add(currentID);
             }
 
-            Integer serversToWrite = new Integer(0);
-            Integer serversReturned = new Integer(0);
+
             int serverIndex = -1;
             boolean[] serverDidReturn = new boolean[writebackMap.size()];
             Object returnLock = new Object();
 
             // Now we will send the writeback request to each server
             for (InetSocketAddress serverAddr : writebackMap.keySet()) {
+                TaoLogger.log("doing a writeback for path with id " + writebackMap.get(serverAddr));
                 serverIndex++;
                 final int serverIndexFinal = serverIndex;
                 // Get the list of paths to be written for the current server
                 List<Long> writebackPaths = writebackMap.get(serverAddr);
                 // TODO: this is the correct spot to continue code
 
-                // Save path IDs that we will be popping off
-                long[] writePathIDs = new long[writebackPaths.size()];
-
                 byte[] dataToWrite = null;
                 int pathSize = 0;
-                for (int i = 0; i < writePathIDs.length; i++) {
+                for (int i = 0; i < writebackPaths.size(); i++) {
                     Path p = mSubtree.getPath(writebackPaths.get(i));
+                    p.setPathID(mRelativeLeafMapper.get(p.getID()));
 
                     // TODO: need to shrink subtree path length
 
@@ -697,8 +704,6 @@ public class TaoProcessor implements Processor {
                     } else {
                         dataToWrite = Bytes.concat(dataToWrite, mCryptoUtil.encryptPath(p));
                     }
-
-                    writePathIDs[i] = mRelativeLeafMapper.get(p.getID());
                 }
                 TaoLogger.logForce("Going to do writeback");
 
@@ -725,14 +730,15 @@ public class TaoProcessor implements Processor {
                 channel.connect(serverAddr, null, new CompletionHandler<Void, Void>() {
                     @Override
                     public void completed(Void result, Void attachment) {
-
+                        TaoLogger.log("Connected to server for writeback");
                         // First we send the message type to the server along with the size of the message
-                        ByteBuffer messageType = MessageUtility.createMessageTypeBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
+                        ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
 
                         // Asynchronously write to server
                         channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
                             @Override
                             public void completed(Integer result, Void attachment) {
+                                TaoLogger.log("Just sent the header for writeback");
                                 // Now we send the rest of message to the server
                                 ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
 
@@ -740,6 +746,11 @@ public class TaoProcessor implements Processor {
                                 channel.write(message, null, new CompletionHandler<Integer, Void>() {
                                     @Override
                                     public void completed(Integer result, Void attachment) {
+                                        TaoLogger.log("Sent the rest of the message for writeback");
+                                        if (message.remaining() > 0) {
+                                            channel.write(message, null, this);
+                                            return;
+                                        }
                                         // Asynchronously read response type and size from server
                                         //ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
                                         ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
@@ -747,6 +758,7 @@ public class TaoProcessor implements Processor {
 
                                             @Override
                                             public void completed(Integer result, Void attachment) {
+                                                TaoLogger.log("just read the message from server regarding writeback");
                                                 // Flip the byte buffer for reading
                                                 messageTypeAndSize.flip();
 

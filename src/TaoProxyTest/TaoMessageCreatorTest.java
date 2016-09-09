@@ -3,6 +3,7 @@ package TaoProxyTest;
 import Configuration.TaoConfigs;
 import Messages.ClientRequest;
 import Messages.MessageCreator;
+import Messages.MessageTypes;
 import Messages.ProxyRequest;
 import TaoProxy.*;
 import org.junit.Test;
@@ -22,9 +23,9 @@ public class TaoMessageCreatorTest {
         MessageCreator messageCreator = new TaoMessageCreator();
         ClientRequest clientRequest = messageCreator.createClientRequest();
         clientRequest.setBlockID(3);
-        clientRequest.setType(Constants.CLIENT_READ_REQUEST);
+        clientRequest.setType(MessageTypes.CLIENT_READ_REQUEST);
         clientRequest.setRequestID(6);
-        byte[] dataToWrite = new byte[Constants.BLOCK_SIZE];
+        byte[] dataToWrite = new byte[TaoConfigs.BLOCKS_IN_BUCKET];
         Arrays.fill(dataToWrite, (byte) 1);
         clientRequest.setData(dataToWrite);
 
@@ -39,7 +40,7 @@ public class TaoMessageCreatorTest {
     public void testProxyRequest() {
         MessageCreator messageCreator = new TaoMessageCreator();
         ProxyRequest proxyRequest = messageCreator.createProxyRequest();
-        proxyRequest.setType(Constants.PROXY_READ_REQUEST);
+        proxyRequest.setType(MessageTypes.PROXY_READ_REQUEST);
         proxyRequest.setPathSize(10);
         proxyRequest.setPathID(1);
 
@@ -102,7 +103,7 @@ public class TaoMessageCreatorTest {
 
         // Create a proxy write request
         ProxyRequest writebackRequest = messageCreator.createProxyRequest();
-        writebackRequest.setType(Constants.PROXY_WRITE_REQUEST);
+        writebackRequest.setType(MessageTypes.PROXY_WRITE_REQUEST);
         writebackRequest.setPathSize(pathSize);
         writebackRequest.setDataToWrite(dataToWrite);
 
