@@ -8,7 +8,7 @@ import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 
 /**
- * Created by ajmagat on 5/13/16.
+ * TODO: Ideally use something like this in order to shorten code
  */
 public class SendMessageCompletionHandler implements CompletionHandler<Void, Void> {
 

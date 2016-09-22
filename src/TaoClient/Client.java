@@ -2,21 +2,23 @@ package TaoClient;
 
 
 /**
- * Created by ajmagat on 4/12/16.
+ * @brief Interface for a TaoStore Client
  */
 public interface Client {
     /**
-     * @brief
+     * @brief Read data from TaoStore
      * @param blockID
-     * @return
+     * @return the data in block with block id == blockID
      */
     byte[] read(long blockID);
 
     /**
-     * @brief
+     * @brief Write data to block
      * @param blockID
      * @param data
-     * @return
+     * @return if write was successful
      */
     boolean write(long blockID, byte[] data);
+
+    void printSubtree();
 }

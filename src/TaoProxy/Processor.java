@@ -1,11 +1,12 @@
 package TaoProxy;
 
-
 import Messages.ClientRequest;
 import Messages.ServerResponse;
 
+/**
+ * @brief Interface for Processor
+ */
 public interface Processor {
-
     /**
      * @brief Method to read path from server when given a request from sequencer
      * @param req

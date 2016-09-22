@@ -8,7 +8,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Created by ajmagat on 6/26/16.
+ * Implementation of a block for TaoStore implementing the Block interface
  */
 public class TaoBlock implements Block {
     // The ID of this block
@@ -22,7 +22,6 @@ public class TaoBlock implements Block {
      */
     public TaoBlock() {
         mID = -1;
-
         mData = new byte[TaoConfigs.BLOCK_SIZE];
     }
 
@@ -45,19 +44,19 @@ public class TaoBlock implements Block {
     public void initFromSerialized(byte[] serialized) {
         try {
             mID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 0, 8));
-            mData = new byte[Constants.BLOCK_SIZE];
-            System.arraycopy(serialized, Constants.BLOCK_META_DATA_SIZE, mData, 0, Constants.BLOCK_SIZE);
+            mData = new byte[TaoConfigs.BLOCK_SIZE];
+            System.arraycopy(serialized, TaoConfigs.BLOCK_META_DATA_SIZE, mData, 0, TaoConfigs.BLOCK_SIZE);
         } catch (Exception e) {
             mID = -1;
-            mData = new byte[Constants.BLOCK_SIZE];
+            mData = new byte[TaoConfigs.BLOCK_SIZE];
         }
     }
 
     @Override
     public byte[] getData() {
         if (mData != null) {
-            byte[] returnData = new byte[Constants.BLOCK_SIZE];
-            System.arraycopy(mData, 0, returnData, 0, Constants.BLOCK_SIZE);
+            byte[] returnData = new byte[TaoConfigs.BLOCK_SIZE];
+            System.arraycopy(mData, 0, returnData, 0, TaoConfigs.BLOCK_SIZE);
             return returnData;
         }
 
@@ -67,7 +66,7 @@ public class TaoBlock implements Block {
     @Override
     public void setData(byte[] data) {
         if (data != null) {
-            System.arraycopy(data, 0, mData, 0, Constants.BLOCK_SIZE);
+            System.arraycopy(data, 0, mData, 0, TaoConfigs.BLOCK_SIZE);
         } else {
             mData = null;
         }
@@ -118,7 +117,7 @@ public class TaoBlock implements Block {
 
     @Override
     public int hashCode() {
-        // TODO: add data?
+        // TODO: add data to hash?
         return Objects.hash(mID);
     }
 }

@@ -15,13 +15,13 @@ public class BlockPathComparator implements Comparator<Block> {
     private boolean[] mPath;
 
     // The position map
-    private TaoPositionMap mMap;
+    private PositionMap mMap;
 
     /**
      * @brief Constructor that takes in a pathID that this comparator will use to compare blocks
      * @param pathID
      */
-    public BlockPathComparator(long pathID, TaoPositionMap map) {
+    public BlockPathComparator(long pathID, PositionMap map) {
         mPathID = pathID;
         mPath = Utility.getPathFromPID(mPathID, TaoConfigs.TREE_HEIGHT);
         mMap = map;

@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
@@ -9,8 +10,7 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * @brief
- * TODO: Make this implementation agnostic, currently not due to serialization
+ * @brief Implementation of a bucket for TaoStore implementing the Bucket interface
  */
 public class TaoBucket implements Bucket {
     // The blocks in this bucket
@@ -27,14 +27,11 @@ public class TaoBucket implements Bucket {
 
     /**
      * @brief Default constructor
-     * TODO: Should be agnostic to Block type
      */
     public TaoBucket() {
         // Initialize blocks to be empty
-        mBlocks = new Block[Constants.BUCKET_SIZE];
-
-        // TODO: Should be implementation agnostic
-        for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+        mBlocks = new Block[TaoConfigs.BLOCKS_IN_BUCKET];
+        for (int i = 0; i < TaoConfigs.BLOCKS_IN_BUCKET; i++) {
             mBlocks[i] = new TaoBlock();
         }
 
@@ -47,31 +44,41 @@ public class TaoBucket implements Bucket {
 
     @Override
     public void initFromBucket(Bucket bucket) {
-        mBlocks = new Block[Constants.BUCKET_SIZE];
+        // Initialize the list of blocks
+        mBlocks = new Block[TaoConfigs.BLOCKS_IN_BUCKET];
+
+        // Get the blocks from the bucket to be copied
         Block[] temp = bucket.getBlocks();
 
+        // Add the copied blocks to this bucket
         for (int i = 0; i < mBlocks.length; i++) {
             // Copy a block from bucket only if bucket has marked that block as occupied in the bitmap
             if (bucket.checkBlockFilled(i) && temp[i] != null) {
                 mBlocks[i] = temp[i].getCopy();
                 markBlockFilled(i);
             } else {
-                // TODO: Should be implementation agnostic
+                // If the block is not filled in the bucket to be copied, add an empty block to the bucket
                 mBlocks[i] = new TaoBlock();
             }
         }
 
+        // Copy the update time of the copied bucket
         mUpdateTime = bucket.getUpdateTime();
     }
 
     @Override
     public void initFromSerialized(byte[] serialized) {
+        // Get the last time this bucket was updated
         mUpdateTime = Longs.fromByteArray(Arrays.copyOfRange(serialized, 0, 8));
+
+        // Get the bitmap for this bucket
         mBucketBitmap = Ints.fromByteArray(Arrays.copyOfRange(serialized, 8, 12));
 
-        mBlocks = new Block[Constants.BUCKET_SIZE];
+        // Initialize the list of blocks
+        mBlocks = new Block[TaoConfigs.BLOCKS_IN_BUCKET];
 
-        int entireBlockSize = Constants.BLOCK_META_DATA_SIZE + Constants.BLOCK_SIZE;
+        // Get the actual blocks
+        int entireBlockSize = TaoConfigs.TOTAL_BLOCK_SIZE;
         for (int i = 0; i < mBlocks.length; i++) {
             mBlocks[i] = new TaoBlock();
             mBlocks[i].initFromSerialized(Arrays.copyOfRange(serialized, 12 + entireBlockSize * i, 12 + entireBlockSize + entireBlockSize * i));
@@ -79,19 +86,19 @@ public class TaoBucket implements Bucket {
     }
 
     /**
-     * @brief Method to mark one of the blocks for this bucket as filled in the bitmap
+     * @brief Private helper method to mark one of the blocks for this bucket as filled in the bitmap
      * @param index
      */
-    public void markBlockFilled(int index) {
+    private void markBlockFilled(int index) {
         int mask = 1 << index;
         mBucketBitmap = mBucketBitmap | mask;
     }
 
     /**
-     * @brief Method to mark one of the blocks for this bucket as unfilled in the bitmap
+     * @brief Private helper method to mark one of the blocks for this bucket as unfilled in the bitmap
      * @param index
      */
-    public void markBlockUnfilled(int index) {
+    private void markBlockUnfilled(int index) {
         int mask = ~(1 << index);
         mBucketBitmap = mBucketBitmap & mask;
     }
@@ -103,6 +110,7 @@ public class TaoBucket implements Bucket {
     }
 
     // TODO: do this
+    // TODO: Still need this?
     @Override
     public boolean removeBlock(long blockID) {
         return false;
@@ -133,7 +141,7 @@ public class TaoBucket implements Bucket {
     }
 
     /**
-     * @brief Method that will attempt to add block to bucket
+     * @brief Privte helper method that will attempt to add block to bucket
      * @param block
      * @return if block was successfully added or not
      */
@@ -142,6 +150,7 @@ public class TaoBucket implements Bucket {
         for (int i = 0; i < mBlocks.length; i++) {
             // Before adding the block, make sure that the block is not already occupied
             if (!checkBlockFilled(i)) {
+                // If we find an empty spot, we add the block and mark the bucket filled
                 mBlocks[i] = block;
                 markBlockFilled(i);
                 return true;
@@ -155,11 +164,13 @@ public class TaoBucket implements Bucket {
     public Block[] getBlocks() {
         // TODO: need lock?
         // TODO: Copy of blocks?
+        // TODO: Replace this and make it getFilledBlocks?
         return mBlocks;
     }
 
     @Override
     public List<Block> getFilledBlocks() {
+        // Make an arraylist to hold the blocks
         ArrayList<Block> returnList = new ArrayList<>();
 
         // Get a read lock on the bucket
@@ -169,7 +180,7 @@ public class TaoBucket implements Bucket {
             for (int i = 0; i < mBlocks.length; i++) {
                 // Check to see if the block has been properly added
                 if (checkBlockFilled(i)) {
-                    // TODO: return copy?
+                    // TODO: Add a copy? currently a reference
                     returnList.add(mBlocks[i]);
                 }
             }
@@ -207,7 +218,8 @@ public class TaoBucket implements Bucket {
         mRWL.writeLock().lock();
 
         try {
-            for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+            // Mark all blocks unfilled
+            for (int i = 0; i < TaoConfigs.BLOCKS_IN_BUCKET; i++) {
                 markBlockUnfilled(i);
             }
         } finally {
@@ -227,8 +239,9 @@ public class TaoBucket implements Bucket {
      * @param blockID
      * @return block with block ID == blockID. null if not found
      */
+    // TODO: Probably remove
     public Block getBlock(long blockID) {
-        for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+        for (int i = 0; i < TaoConfigs.BLOCKS_IN_BUCKET; i++) {
             if (checkBlockFilled(i) && mBlocks[i].getBlockID() == blockID) {
                 // TODO: return copy?
                 return mBlocks[i];
@@ -239,37 +252,33 @@ public class TaoBucket implements Bucket {
 
     @Override
     public boolean modifyBlock(long blockID, byte[] data) {
+        // Whether or not the modifying succeeded
         boolean writeStatus = false;
         try {
+            // Get write lock
             mRWL.writeLock().lock();
-            for (int i = 0; i < Constants.BUCKET_SIZE; i++) {
+
+            // Search for the correct block
+            for (int i = 0; i < TaoConfigs.BLOCKS_IN_BUCKET; i++) {
                 if (checkBlockFilled(i) && mBlocks[i].getBlockID() == blockID) {
+                    // Modify data for the block
                     mBlocks[i].setData(data);
                     writeStatus = true;
                 }
             }
         } finally {
+            // Release the write lock
             mRWL.writeLock().unlock();
         }
-        return writeStatus;
-    }
 
-    /**
-     * @brief Method to statically get the size of all buckets, without the initialization vector or padding needed for
-     * encryption
-     * @return
-     */
-    // TODO: get this out of here
-    public static int getBucketSize() {
-        int updateTimeSize = 8;
-        int bitmapSize = 4;
-        return updateTimeSize + bitmapSize + Constants.BUCKET_SIZE * (Constants.TOTAL_BLOCK_SIZE);
+        // Return modify status
+        return writeStatus;
     }
 
     @Override
     public byte[] serialize() {
         // The data to be returned
-        byte[] returnData = new byte[TaoBucket.getBucketSize()];
+        byte[] returnData = new byte[TaoConfigs.BUCKET_SIZE];
 
         // Get the bytes for the update time
         byte[] timeBytes = Longs.toByteArray(mUpdateTime);
@@ -283,8 +292,8 @@ public class TaoBucket implements Bucket {
         int metaDataSize = timeBytes.length + bitmapBytes.length;
 
         // Add all the blocks to the return data
-        int entireBlockSize = Constants.BLOCK_META_DATA_SIZE + Constants.BLOCK_SIZE;
-        for(int i = 0; i < Constants.BUCKET_SIZE; i++) {
+        int entireBlockSize = TaoConfigs.TOTAL_BLOCK_SIZE;
+        for(int i = 0; i < TaoConfigs.BLOCKS_IN_BUCKET; i++) {
             System.arraycopy(mBlocks[i].serialize(), 0, returnData, metaDataSize + entireBlockSize * i, entireBlockSize);
         }
 

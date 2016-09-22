@@ -5,18 +5,6 @@ package TaoProxy;
  */
 public interface Block {
     /**
-     * @brief
-     * @param b
-     */
-    void initFromBlock(Block b);
-
-    /**
-     * @brief
-     * @param serialized
-     */
-    void initFromSerialized(byte[] serialized);
-
-    /**
      * @brief Accessor method to get the data of this block
      * @return copy of mData
      */
@@ -51,4 +39,16 @@ public interface Block {
      * @return serialized version of this block
      */
     byte[] serialize();
+
+    /**
+     * @brief Initialize a block with the same data from a given block b
+     * @param b
+     */
+    void initFromBlock(Block b);
+
+    /**
+     * @brief Method to initialize a block given the serialization of a block (of the same class)
+     * @param serialized
+     */
+    void initFromSerialized(byte[] serialized);
 }

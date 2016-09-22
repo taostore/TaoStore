@@ -1,14 +1,6 @@
 package TaoProxyTest;
 
-import TaoProxy.Block;
-import TaoProxy.Bucket;
-import TaoProxy.Constants;
 import org.junit.Test;
-
-import java.io.*;
-import java.util.Arrays;
-
-import static org.junit.Assert.*;
 
 /**
  * @brief

@@ -1,22 +1,11 @@
 package TaoProxy;
 
-import com.google.common.primitives.Ints;
-import com.google.common.primitives.Longs;
-
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @brief Class to represent a bucket
  */
 public interface Bucket {
-    void initFromBucket(Bucket bucket);
-
-    void initFromSerialized(byte[] serialized);
-
     /**
      * @brief Method to add a block to this bucket as well as update the timestamp
      * @param block
@@ -88,4 +77,16 @@ public interface Bucket {
      * @return the serialized version of this bucket as a byte array
      */
     byte[] serialize();
+
+    /**
+     * @brief Initialize a bucket with the same data from a given bucket
+     * @param bucket
+     */
+    void initFromBucket(Bucket bucket);
+
+    /**
+     * @brief Method to initialize a bucket given the serialization of a bucket (of the same class)
+     * @param serialized
+     */
+    void initFromSerialized(byte[] serialized);
 }

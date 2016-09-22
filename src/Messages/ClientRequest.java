@@ -1,64 +1,80 @@
 package Messages;
 
-import com.google.common.primitives.Bytes;
-import com.google.common.primitives.Ints;
-import com.google.common.primitives.Longs;
-import com.sun.tools.javac.util.ArrayUtils;
-
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Objects;
 
 /**
- * @brief A client request that is of the form (type, block id, data)
+ * @brief Interface the represents a request from the client to the proxy
  */
 public interface ClientRequest {
+    /**
+     * @brief Initialize ClientRequest based on a serialized version
+     * @param serialized
+     */
     void initFromSerialized(byte[] serialized);
 
     /**
-     * @brief Accessor for mBlockID
+     * @brief Get the block ID for the request block
      * @return the block ID for the requested block
      */
     long getBlockID();
 
+    /**
+     * @brief Set the block ID
+     * @param blockID
+     */
     void setBlockID(long blockID);
 
     /**
-     * @brief Accessor for mType
+     * @brief Get the type of request
      * @return the type of request
      */
     int getType();
 
+    /**
+     * @brief Set the type of request
+     * @param type
+     */
     void setType(int type);
 
     /**
-     * @brief Accessor for mData
+     * @brief Get the data that was requested to be written
      * @return the data that was requested to be set on write (null if type is read)
      */
     byte[] getData();
 
     /**
-     * @brief Mutator for mData
+     * @brief Set the data to write
      * @param data
      */
     void setData(byte[] data);
 
     /**
-     * @brief Function to serialize ClientRequest into bytes
-     * @return byte representation of ClientRequest
-     */
-    byte[] serialize();
-
-    /**
-     * @brief Accessor for mRequestID
+     * @brief Get this request's unique ID
      * @return the unique ID for this request
      */
     long getRequestID();
 
+    /**
+     * @brief Set this request's unique ID
+     * @param requestID
+     */
     void setRequestID(long requestID);
 
+    /**
+     * @brief Get the client address for this request
+     * @return the address where this request originated
+     */
     InetSocketAddress getClientAddress();
 
+    /**
+     * @brief Set the client address for this request
+     * @param clientAddress
+     */
     void setClientAddress(InetSocketAddress clientAddress);
+
+    /**
+     * @brief Method to serialize ClientRequest into bytes
+     * @return byte representation of ClientRequest
+     */
+    byte[] serialize();
 }

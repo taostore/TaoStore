@@ -16,6 +16,8 @@ import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 
 /**
@@ -40,8 +42,14 @@ public class TaoProxy implements Proxy {
     // A CryptoUtil
     private CryptoUtil mCryptoUtil;
 
-    //
+    // Subtree
     private Subtree mSubtree;
+
+    // A map that maps each leafID to the relative leaf ID it would have within a server partition
+    // TODO: Share with processor
+    private Map<Long, Long> mRelativeLeafMapper;
+
+    private PositionMap mPositionMap;
 
     /**
      * @brief Constructor
@@ -52,14 +60,19 @@ public class TaoProxy implements Proxy {
     public TaoProxy(long minServerSize, MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree) {
         try {
             // TODO: Remove this, for trace only
-            TaoLogger.logOn = false;
+            TaoLogger.logOn = true;
 
             // Initialize needed constants
             TaoConfigs.initConfiguration(minServerSize);
 
             // Create a CryptoUtil
             mCryptoUtil = new TaoCryptoUtil();
+
+            // Assign subtree
             mSubtree = subtree;
+
+            // Create a position map
+            mPositionMap = new TaoPositionMap(TaoConfigs.PARTITION_SERVERS);
 
             // Assign the message and path creators
             mMessageCreator = messageCreator;
@@ -70,7 +83,23 @@ public class TaoProxy implements Proxy {
 
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
-            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree);
+            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap);
+
+            // Map each leaf to a relative leaf for the servers
+            TaoLogger.logForce("hi");
+            mRelativeLeafMapper = new HashMap<>();
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
+            int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
+            int leavesPerPartition = numLeaves / numServers;
+            for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
+                long j = i;
+                long relativeLeaf = 0;
+                while (j < i + leavesPerPartition) {
+                    mRelativeLeafMapper.put(j, relativeLeaf);
+                    j++;
+                    relativeLeaf++;
+                }
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -81,11 +110,12 @@ public class TaoProxy implements Proxy {
      */
     public void initializeServer() {
         try {
-            // TODO: Write the top of subtree for multiple storage partition
-            //   mSubtree.initRoot();
+            // Initialize the top of the subtree
+            mSubtree.initRoot();
 
             // Get the total number of paths
             int totalPaths = 1 << TaoConfigs.TREE_HEIGHT;
+            TaoLogger.log("Tree height is " + TaoConfigs.TREE_HEIGHT);
             TaoLogger.log("Total paths " + totalPaths);
 
             // Variables to both hold the data of a path as well as how big the path is
@@ -97,13 +127,14 @@ public class TaoProxy implements Proxy {
                 TaoLogger.log("Creating path " + i);
 
                 // Connect to server, create input and output streams
-                Socket socket = new Socket(TaoConfigs.SERVER_HOSTNAME, TaoConfigs.SERVER_PORT);
+                InetSocketAddress sa = mPositionMap.getServerForPosition(i);
+                Socket socket = new Socket(sa.getHostName(), sa.getPort());
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream());
                 InputStream input = socket.getInputStream();
 
                 // Create empty paths and serialize
                 Path defaultPath = mPathCreator.createPath();
-                defaultPath.setPathID(i);
+                defaultPath.setPathID(mRelativeLeafMapper.get(((long) i)));
                 dataToWrite = mCryptoUtil.encryptPath(defaultPath);
                 pathSize = dataToWrite.length;
 
@@ -194,6 +225,7 @@ public class TaoProxy implements Proxy {
                             int messageType = typeAndLength[0];
                             int messageLength = typeAndLength[1];
 
+                            TaoLogger.log("The message type is " + messageType);
                             // Serve message based on type
                             if (messageType == MessageTypes.CLIENT_WRITE_REQUEST || messageType == MessageTypes.CLIENT_READ_REQUEST) {
                                 // Get the rest of the message
@@ -230,6 +262,9 @@ public class TaoProxy implements Proxy {
                                     }
                                 });
 
+                            } else if (messageType == MessageTypes.PRINT_SUBTREE) {
+                                // Print the subtree, used for debugging
+                                mSubtree.printSubtree();
                             }
                         }
                         @Override
@@ -249,8 +284,22 @@ public class TaoProxy implements Proxy {
     }
 
     public static void main(String[] args) {
+        TaoLogger.logOn = true;
+        if (args.length == 0) {
+            System.out.println("Usage: Minimum size of storage server");
+            System.exit(0);
+        }
+
+        boolean shouldInitServer = true;
+        if (args.length == 2) {
+            shouldInitServer = false;
+        }
         // Create proxy and run
         TaoProxy proxy = new TaoProxy(Long.parseLong(args[0]), new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree());
-        proxy.run();
+
+        if (shouldInitServer) {
+            proxy.initializeServer();
+        }
+
     }
 }

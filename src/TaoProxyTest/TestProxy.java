@@ -1,5 +1,6 @@
 package TaoProxyTest;
 
+import Configuration.TaoConfigs;
 import Messages.ClientRequest;
 import Messages.ServerResponse;
 import TaoProxy.*;
@@ -20,7 +21,7 @@ public class TestProxy implements Proxy {
 
     public TestProxy() {
         try {
-            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(Constants.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
           //  mProcessor = new TaoProcessor(this, mThreadGroup);
             mResponseReceived = false;
             mWaitLock = new Object();

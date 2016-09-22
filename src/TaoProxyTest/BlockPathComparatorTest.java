@@ -27,7 +27,7 @@ public class BlockPathComparatorTest {
             map.setBlockPosition((long) i, (long) i);
         }
 
-        PriorityQueue<Block> blockHeap = new PriorityQueue<>(Constants.BUCKET_SIZE, new BlockPathComparator(targetPath, map));
+        PriorityQueue<Block> blockHeap = new PriorityQueue<>(TaoConfigs.BLOCKS_IN_BUCKET, new BlockPathComparator(targetPath, map));
 
         blockHeap.addAll(blocks);
 

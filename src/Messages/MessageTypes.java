@@ -13,4 +13,7 @@ public class MessageTypes {
     public static final int SERVER_RESPONSE = 3;
     public static final int PROXY_RESPONSE = 4;
     public static final int PROXY_INITIALIZE_REQUEST = 5;
+
+    // For testing
+    public static final int PRINT_SUBTREE = 11;
 }

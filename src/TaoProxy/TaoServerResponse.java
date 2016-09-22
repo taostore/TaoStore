@@ -1,5 +1,7 @@
 package TaoProxy;
 
+import Configuration.TaoConfigs;
+import Messages.MessageTypes;
 import Messages.ServerResponse;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
@@ -8,12 +10,17 @@ import com.google.common.primitives.Longs;
 import java.util.Arrays;
 
 /**
- * Created by ajmagat on 6/3/16.
+ * @brief Implementation of a class that implements the ServerResponse message type
+ * TODO: Pad?
  */
 public class TaoServerResponse implements ServerResponse {
     // Data for path that this response corresponds to
     private boolean mWriteStatus;
+
+    // The path ID that was requested for a read
     private long mPathID;
+
+    // The data that was requested on a read
     private byte[] mEncryptedPath;
 
     /**
@@ -51,9 +58,12 @@ public class TaoServerResponse implements ServerResponse {
         }
     }
 
+    @Override
     public void initFromSerialized(byte[] serialized) {
         int type = Ints.fromByteArray(Arrays.copyOfRange(serialized, 0, 4));
         mWriteStatus = type == 1 ? true : false;
+
+        // If the the length of the serialization is greater than 4, this was a read request
         if (serialized.length > 4) {
             mPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
             mEncryptedPath = Arrays.copyOfRange(serialized, 12, serialized.length);
@@ -87,41 +97,21 @@ public class TaoServerResponse implements ServerResponse {
         return mWriteStatus;
     }
 
+    @Override
     public void setIsWrite(boolean status) {
         mWriteStatus = status;
     }
 
-    /**
-     *
-     * @return
-     */
-    public static int getServerResponseSize() {
-        return TaoPath.getPathSize() + 4;
-    }
-
-    public static int getServerResponseSizeWrite() {
-        return 4;
-    }
-    /**
-     *
-     * @return
-     */
     @Override
     public byte[] serialize() {
-        int type = mWriteStatus ? 1 : 0;
-        byte[] typeBytes = Ints.toByteArray(type);
+        int writeInt = mWriteStatus ? 1 : 0;
+        byte[] writeBytes = Ints.toByteArray(writeInt);
 
         if (mEncryptedPath != null) {
             byte[] pathIDBytes = Longs.toByteArray(mPathID);
-            return Bytes.concat(typeBytes, pathIDBytes, mEncryptedPath);
+            return Bytes.concat(writeBytes, pathIDBytes, mEncryptedPath);
         } else {
-            return typeBytes;
+            return writeBytes;
         }
-    }
-
-    public byte[] serializeAsMessage() {
-        byte[] protocolByte = Ints.toByteArray(Constants.SERVER_RESPONSE);
-
-        return Bytes.concat(protocolByte, serialize());
     }
 }
