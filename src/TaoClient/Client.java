@@ -2,7 +2,7 @@ package TaoClient;
 
 
 /**
- * @brief Interface for a Client
+ * @brief Interface for a TaoStore Client
  */
 public interface Client {
     /**

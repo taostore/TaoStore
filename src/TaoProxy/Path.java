@@ -4,8 +4,6 @@ package TaoProxy;
  * @brief Interface to represent a path
  */
 public interface Path {
-    void initFromSerialized(byte[] serialized);
-
     /**
      * @brief Method to add bucket into first empty level on path
      * @param bucket
@@ -37,7 +35,7 @@ public interface Path {
      * @brief Accessor method to get the path ID
      * @return the path ID
      */
-    long getID();
+    long getPathID();
 
     /**
      * @brief Mutator method to set the path ID for this path
@@ -62,6 +60,12 @@ public interface Path {
      * @return
      */
     byte[] serializeBuckets();
+
+    /**
+     * @brief Method to initialize a path given the serialization of a path (of the same class)
+     * @param serialized
+     */
+    void initFromSerialized(byte[] serialized);
 
     /**
      * @brief Lock this path, disallowing others from modifying it

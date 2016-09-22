@@ -42,7 +42,7 @@ public class TaoProxy implements Proxy {
     // A CryptoUtil
     private CryptoUtil mCryptoUtil;
 
-    //
+    // Subtree
     private Subtree mSubtree;
 
     // A map that maps each leafID to the relative leaf ID it would have within a server partition
@@ -67,7 +67,11 @@ public class TaoProxy implements Proxy {
 
             // Create a CryptoUtil
             mCryptoUtil = new TaoCryptoUtil();
+
+            // Assign subtree
             mSubtree = subtree;
+
+            // Create a position map
             mPositionMap = new TaoPositionMap(TaoConfigs.PARTITION_SERVERS);
 
             // Assign the message and path creators
@@ -79,7 +83,7 @@ public class TaoProxy implements Proxy {
 
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
-            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree);
+            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap);
 
             // Map each leaf to a relative leaf for the servers
             TaoLogger.logForce("hi");
@@ -87,12 +91,10 @@ public class TaoProxy implements Proxy {
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
             int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
             int leavesPerPartition = numLeaves / numServers;
-
             for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
                 long j = i;
                 long relativeLeaf = 0;
                 while (j < i + leavesPerPartition) {
-                 //   TaoLogger.logForce("Mapping absolute leaf " + j + " to relative leaf " + relativeLeaf);
                     mRelativeLeafMapper.put(j, relativeLeaf);
                     j++;
                     relativeLeaf++;
@@ -108,7 +110,7 @@ public class TaoProxy implements Proxy {
      */
     public void initializeServer() {
         try {
-            // TODO: Write the top of subtree for multiple storage partition
+            // Initialize the top of the subtree
             mSubtree.initRoot();
 
             // Get the total number of paths
@@ -261,7 +263,7 @@ public class TaoProxy implements Proxy {
                                 });
 
                             } else if (messageType == MessageTypes.PRINT_SUBTREE) {
-                                TaoLogger.log("Are we getting here?");
+                                // Print the subtree, used for debugging
                                 mSubtree.printSubtree();
                             }
                         }

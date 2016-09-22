@@ -86,19 +86,19 @@ public class TaoBucket implements Bucket {
     }
 
     /**
-     * @brief Method to mark one of the blocks for this bucket as filled in the bitmap
+     * @brief Private helper method to mark one of the blocks for this bucket as filled in the bitmap
      * @param index
      */
-    public void markBlockFilled(int index) {
+    private void markBlockFilled(int index) {
         int mask = 1 << index;
         mBucketBitmap = mBucketBitmap | mask;
     }
 
     /**
-     * @brief Method to mark one of the blocks for this bucket as unfilled in the bitmap
+     * @brief Private helper method to mark one of the blocks for this bucket as unfilled in the bitmap
      * @param index
      */
-    public void markBlockUnfilled(int index) {
+    private void markBlockUnfilled(int index) {
         int mask = ~(1 << index);
         mBucketBitmap = mBucketBitmap & mask;
     }

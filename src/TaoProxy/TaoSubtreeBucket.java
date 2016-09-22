@@ -3,7 +3,7 @@ package TaoProxy;
 import java.util.List;
 
 /**
- * Created by ajmagat on 6/28/16.
+ * @brief Implementation of a class that implements the SubtreeBucket interface and extends a TaoBucket
  */
 public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
     // Left and right child buckets
@@ -39,6 +39,11 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
         mRight = null;
     }
 
+    /**
+     * @brief Constructor that takes in a bucket and level. Used for debugging
+     * @param bucket
+     * @param level
+     */
     public TaoSubtreeBucket(Bucket bucket, int level) {
         super();
         initFromBucket(bucket);

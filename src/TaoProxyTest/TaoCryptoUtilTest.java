@@ -42,7 +42,7 @@ public class TaoCryptoUtilTest {
 
         Path unencrypted = mCryptoUtil.decryptPath(encryption);
 
-        assertEquals(p.getID(), unencrypted.getID());
+        assertEquals(p.getPathID(), unencrypted.getPathID());
 
     }
 }

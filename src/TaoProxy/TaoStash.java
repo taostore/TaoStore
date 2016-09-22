@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * @brief Stash that holds blocks for proxy
+ * @brief Implementation of a class that implements the Stash interface, which holds blocks for proxy
  */
 public class TaoStash implements Stash {
     public ConcurrentMap<Long, Block> mStash;

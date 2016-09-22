@@ -89,7 +89,7 @@ public class TaoSubtree implements Subtree {
         }
 
         // Get the directions for this path
-        boolean[] pathDirection = Utility.getPathFromPID(path.getID(), TaoConfigs.TREE_HEIGHT);
+        boolean[] pathDirection = Utility.getPathFromPID(path.getPathID(), TaoConfigs.TREE_HEIGHT);
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
@@ -175,7 +175,7 @@ public class TaoSubtree implements Subtree {
      * @param level
      * @param minTime
      * @param pathReqMultiSet
-     * @return
+     * @return timestamp of bucket
      */
     public long deleteChild(SubtreeBucket bucket, long pathID, boolean[] directions, int level, long minTime, Set<Long> pathReqMultiSet) {
         // TODO: remove bucket from mBlockMap
@@ -223,11 +223,11 @@ public class TaoSubtree implements Subtree {
     }
 
     /**
-     * @brief
+     * @brief Check if there is any level at which pathID intersects with a path in the pathReqMultiSet
      * @param pathID
      * @param level
      * @param pathReqMultiSet
-     * @return
+     * @return true or false depending on if there is an intersection
      */
     private boolean isBucketInSet(long pathID, int level, Set<Long> pathReqMultiSet) {
         for (Long checkPathID : pathReqMultiSet) {
@@ -266,6 +266,7 @@ public class TaoSubtree implements Subtree {
         }
     }
 
+    @Override
     public void mapBlockToBucket(long blockID, Bucket bucket) {
         mBlockMap.put(blockID, bucket);
     }

@@ -76,56 +76,44 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] encryptPath(Path p) {
         try {
-            // TODO: Do not include the top of the tree in the case that there are multiple partitions
-            // TODO: Have I done this? How is this code working?
-            byte[] idBytes = Longs.toByteArray(p.getID());
+            // Create the two pieces of unencrypted data, the path ID and the buckets in path
+            byte[] idBytes = Longs.toByteArray(p.getPathID());
             byte[] bucketBytes = p.serializeBuckets();
 
+            // Keep track of bucket size
             int bucketSize = TaoConfigs.BUCKET_SIZE;
-           // TaoLogger.log("the bucket size in taocryptoutil is " + bucketSize);
-           // TaoLogger.log("calculated bucket size is " + TaoConfigs.ENCRYPTED_BUCKET_SIZE);
+
             // Encrypt the first bucket
             byte[] unencryptedBucket = Arrays.copyOfRange(bucketBytes, 0, bucketSize);
-
             byte[] encryptedBuckets = encrypt(unencryptedBucket);
-           // TaoLogger.log("first encrypted bucket has size " + encryptedBuckets.length);
 
-         //   TaoLogger.log("height of path is " + p.getPathHeight());
+            // Encrypt the rest of the buckets
             for (int i = 1; i < p.getPathHeight() + 1; i++) {
                 unencryptedBucket = Arrays.copyOfRange(bucketBytes, bucketSize * i , bucketSize + bucketSize * i);
-            //    TaoLogger.log("size of the unencrypted padded bucket is " + unencryptedBucket.length);
                 byte[] temp = encrypt(unencryptedBucket);
-          //      TaoLogger.log("====== size of encrypted bucket is " + temp.length);
                 encryptedBuckets = Bytes.concat(encryptedBuckets, temp);
             }
 
-            // Remove the top of the path
-            int numServers = TaoConfigs.PARTITION_SERVERS.size();
-
             // Check if we have more than one server, in which case we must remove some of the bytes for the path
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
             if (numServers > 1) {
                 if ((numServers & -numServers) != numServers) {
                     // TODO: only use a power of two of the servers
                 }
 
+                // Calculate which is the first bucket in the path that we need to keep in the encryption
                 int firstNeededEncryptedBucketStart = ((numServers / 2) - 1) + 1;
-                TaoLogger.log("The first bucket i think i need is " + firstNeededEncryptedBucketStart);
-                encryptedBuckets = Arrays.copyOfRange(encryptedBuckets, (int) (firstNeededEncryptedBucketStart * TaoConfigs.ENCRYPTED_BUCKET_SIZE), encryptedBuckets.length);
+                TaoLogger.log("The first bucket we need to keep in encryption is bucket " + firstNeededEncryptedBucketStart);
+
+                // Keep only the encrypted buckets starting from the first one needed
+                encryptedBuckets = Arrays.copyOfRange(encryptedBuckets,
+                        (int) (firstNeededEncryptedBucketStart * TaoConfigs.ENCRYPTED_BUCKET_SIZE), encryptedBuckets.length);
             }
 
             long amountOfEncryptedBuckets = encryptedBuckets.length / TaoConfigs.ENCRYPTED_BUCKET_SIZE;
             TaoLogger.log("Encrypted path has " + amountOfEncryptedBuckets + " encrypted buckets");
 
-
-//            TaoLogger.log("Can we decrypt?");
-//            for (int i = 0; i < 3; i++) {
-//                int offset = i * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
-//                // Get serialized bucket from data
-//                byte[] serializedBucket = Arrays.copyOfRange(encryptedBuckets, offset, (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE + offset);
-//                // Decrypt the serialized bucket
-//                byte[] decryptedBucket = decrypt(serializedBucket);
-//            }
-//            System.exit(1);
+            // Return encrypted path
             return Bytes.concat(idBytes, encryptedBuckets);
         } catch (Exception e) {
             e.printStackTrace();
@@ -135,8 +123,6 @@ public class TaoCryptoUtil implements CryptoUtil {
 
     @Override
     public Path decryptPath(byte[] data) {
-        // TODO: Pad the front of data to account for the possibility that there are multiple partitions,
-        // TODO: which would mean the data would have less levels than expected
         try {
             // Create a path
             long id = Longs.fromByteArray(Arrays.copyOfRange(data, 0, 8));
@@ -181,7 +167,6 @@ public class TaoCryptoUtil implements CryptoUtil {
 
                 // Cut off padding
                 decryptedBucket = Arrays.copyOf(decryptedBucket, bucketSize);
-
 
                 TaoLogger.log("decryptedBucket has size " + decryptedBucket.length);
 

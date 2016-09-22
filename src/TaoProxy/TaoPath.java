@@ -7,7 +7,7 @@ import com.google.common.primitives.Longs;
 import java.util.Arrays;
 
 /**
- * Created by ajmagat on 6/26/16.
+ * @brief Implementation of a path for TaoStore implementing the Path interface
  */
 public class TaoPath implements Path {
     // The buckets in this path
@@ -46,11 +46,10 @@ public class TaoPath implements Path {
         mPathBitmap = 0;
     }
 
-    // TODO: what to do about encrypted size vs non encrypted
+    @Override
     public void initFromSerialized(byte[] serialized) {
         mID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 0, 8));
 
-        //mID = pathID;
         fillBitmap();
 
         mBuckets = new Bucket[TaoConfigs.TREE_HEIGHT + 1];
@@ -63,31 +62,52 @@ public class TaoPath implements Path {
         }
     }
 
-    public void fillBitmap() {
+    /**
+     * @brief Private helper method to fill all the entries in the path bitmap
+     */
+    private void fillBitmap() {
         for (int i = 0; i < TaoConfigs.TREE_HEIGHT + 1; i++) {
             int mask = 1 << i;
             mPathBitmap = mPathBitmap | mask;
         }
     }
 
-    public void setPathID(long pathID) {
-        mID = pathID;
-    }
-
-    public void markBucketFilled(int index) {
+    /**
+     * @brief Private helper method to fill the specified entry in the path bitmap
+     * @param index
+     */
+    private void markBucketFilled(int index) {
         int mask = 1 << index;
         mPathBitmap = mPathBitmap | mask;
     }
 
-    public void markBucketUnfilled(int index) {
+    /**
+     * @brief Private helper method to remove the specified entry in the path bitmap
+     * @param index
+     */
+    private void markBucketUnfilled(int index) {
         int mask = ~(1 << index);
         mPathBitmap = mPathBitmap & mask;
     }
 
-    public boolean checkBucketFilled(int index) {
-
+    /**
+     * @bief Private helepr method to check if the specified entry in the path bitmap is filled
+     * @param index
+     * @return
+     */
+    private boolean checkBucketFilled(int index) {
         int mask = 1 << index;
         return (mPathBitmap & mask) == mask;
+    }
+
+    @Override
+    public long getPathID() {
+        return mID;
+    }
+
+    @Override
+    public void setPathID(long pathID) {
+        mID = pathID;
     }
 
     @Override
@@ -118,26 +138,6 @@ public class TaoPath implements Path {
         return false;
     }
 
-//    /**
-//     * @brief Method to copy the contents of the passed in bucket into a new bucket on the path
-//     * @param bucket
-//     * @return
-//     */
-//    public boolean copyBucket(Bucket bucket) {
-//        for (int i = 0; i < mBuckets.length; i++) {
-//            if (mBuckets[i] == null) {
-//                if (bucket != null) {
-//                    mBuckets[i] = new Bucket(bucket);
-//                }
-//
-//                markBucketFilled(i);
-//                return true;
-//            }
-//        }
-//
-//        return false;
-//    }
-
     @Override
     public Bucket[] getBuckets() {
         return mBuckets;
@@ -149,17 +149,6 @@ public class TaoPath implements Path {
             return mBuckets[level];
         }
         return null;
-    }
-
-    @Override
-    public long getID() {
-        return mID;
-    }
-
-    // TODO: Get rid of this
-    public static int getPathSize() {
-        int idSize = 8;
-        return idSize + (TaoConfigs.TREE_HEIGHT + 1) * TaoConfigs.BUCKET_SIZE;
     }
 
     @Override
@@ -175,24 +164,9 @@ public class TaoPath implements Path {
         return Bytes.concat(idBytes, serializedBuckets);
     }
 
-    /**
-     * @brief Method to return the serialization of this path without the 8 bytes for pathID
-     * @return
-     */
-    public byte[] serializeForDiskWrite() {
-        byte[] returnData = new byte[TaoPath.getPathSize() - 8];
-        int entireBucketSize = TaoConfigs.BUCKET_SIZE;
-
-        for(int i = 0; i < mBuckets.length; i++) {
-            System.arraycopy(mBuckets[i].serialize(), 0, returnData, entireBucketSize * i, entireBucketSize);
-        }
-
-        return returnData;
-    }
-
     @Override
     public byte[] serializeBuckets() {
-        byte[] returnData = new byte[TaoPath.getPathSize() - 8];
+        byte[] returnData = new byte[TaoConfigs.PATH_SIZE];
         int entireBucketSize = TaoConfigs.BUCKET_SIZE;
 
         for(int i = 0; i < mBuckets.length; i++) {

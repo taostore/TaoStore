@@ -1,6 +1,5 @@
 package TaoProxy;
 
-import Configuration.TaoConfigs;
 import Messages.MessageTypes;
 import Messages.ProxyRequest;
 import com.google.common.primitives.Bytes;
@@ -10,7 +9,7 @@ import com.google.common.primitives.Longs;
 import java.util.Arrays;
 
 /**
- *
+ * @brief IImplementation of a class that implements the ProxyRequest message type
  */
 public class TaoProxyRequest implements ProxyRequest {
     private int mType;
@@ -85,14 +84,6 @@ public class TaoProxyRequest implements ProxyRequest {
         }
     }
 
-    public int getType() {
-        return mType;
-    }
-
-    public void setType(int type) {
-        mType = type;
-    }
-
     @Override
     public void initFromSerialized(byte[] serialized) {
         mType = Ints.fromByteArray(Arrays.copyOfRange(serialized, 0, 4));
@@ -118,10 +109,22 @@ public class TaoProxyRequest implements ProxyRequest {
         }
     }
 
+    @Override
+    public int getType() {
+        return mType;
+    }
+
+    @Override
+    public void setType(int type) {
+        mType = type;
+    }
+
+    @Override
     public int getPathSize() {
         return mPathSize;
     }
 
+    @Override
     public void setPathSize(int pathSize) {
         mPathSize = pathSize;
     }
@@ -131,30 +134,26 @@ public class TaoProxyRequest implements ProxyRequest {
         return mReadPathID;
     }
 
+    @Override
     public void setPathID(long pathID) {
         mReadPathID = pathID;
     }
 
+    @Override
     public byte[] getDataToWrite() {
         return mDataToWrite;
     }
 
+    @Override
     public void setDataToWrite(byte[] data) {
         mDataToWrite = data;
     }
 
-    public static int getProxyWriteRequestSize() {
-        return 4 + TaoConfigs.WRITE_BACK_THRESHOLD * TaoPath.getPathSize();
-    }
-
-    /**
-     * @brief
-     * @return
-     */
     @Override
     public byte[] serialize() {
         byte[] returnData = null;
 
+        // Serialize based on request type
         if (mType == MessageTypes.PROXY_READ_REQUEST) {
             byte[] typeBytes = Ints.toByteArray(mType);
             byte[] pathBytes = Longs.toByteArray(mReadPathID);

@@ -7,7 +7,11 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * @brief Implementation of a class that implements the PositionMap interface.
+ */
 public class TaoPositionMap implements PositionMap {
+    // Map that maps each blockID to a leafID
     public ConcurrentMap<Long, Long> mPositions;
 
     // Map that maps each leafID to the address of a partition
@@ -32,20 +36,21 @@ public class TaoPositionMap implements PositionMap {
 
         // Check if power of two
         if ((numServers & -numServers) != numServers) {
-            // TODO: only use a power of two of the servers
+            // TODO: only use a power of two for the servers, throw error?
         }
 
+        // Get the number of leaves each server will contain
         int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
         int leavesPerServer = numLeaves / numServers;
 
         // Assign each leaf to a server
         int currentServer = 0;
-        for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
-            long j = i;
-            while (j < i + leavesPerServer) {
-                TaoLogger.log("skeddit assigning " + j + " to server " + storageServerAddresses.get(currentServer).getHostName());
-                mPartitionAddressMap.put(j, storageServerAddresses.get(currentServer));
-                j++;
+        for (int i = 0; i < numLeaves; i += leavesPerServer) {
+            long currentServerLeaves = i;
+            while (currentServerLeaves < i + leavesPerServer) {
+                TaoLogger.log("skeddit assigning " + currentServerLeaves + " to server " + storageServerAddresses.get(currentServer).getHostName());
+                mPartitionAddressMap.put(currentServerLeaves, storageServerAddresses.get(currentServer));
+                currentServerLeaves++;
             }
             currentServer++;
         }

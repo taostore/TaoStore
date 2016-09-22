@@ -36,6 +36,7 @@ public class TaoConfigs {
     public static final int IV_SIZE = 16;
 
     public static int BUCKET_SIZE;
+    public static int PATH_SIZE;
     public static long ENCRYPTED_BUCKET_SIZE;
     // Calculate the size of the ORAM tree in both height and total storage
     public static int TREE_HEIGHT;
@@ -60,6 +61,7 @@ public class TaoConfigs {
         // Calculate the size of the ORAM tree in both height and total storage
         TREE_HEIGHT = calculateHeight(minServerSize);
         TOTAL_STORAGE_SIZE = calculateSize(TREE_HEIGHT, BUCKET_SIZE);
+        PATH_SIZE = calculatePathSize();
     }
 
     private static int calculateBucketSize() {
@@ -76,6 +78,11 @@ public class TaoConfigs {
 //        }
      //   TaoLogger("bucket size in taoconfigs is " + bucketSize);
         return bucketSize;
+    }
+
+    private static int calculatePathSize() {
+        int idSize = 8;
+        return idSize + (TaoConfigs.TREE_HEIGHT + 1) * TaoConfigs.BUCKET_SIZE;
     }
 
     private static long calculateEncryptedBucketSize() {

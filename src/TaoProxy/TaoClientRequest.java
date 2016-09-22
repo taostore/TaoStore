@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * @brief Implementation of a class that implements ClientRequest message type
+ * @brief Implementation of a class that implements the ClientRequest message type
  */
 public class TaoClientRequest implements ClientRequest {
     // The block ID that this request is asking for
@@ -38,8 +38,6 @@ public class TaoClientRequest implements ClientRequest {
         mType = -1;
         mData = new byte[TaoConfigs.BLOCK_SIZE];
         mRequestID = -1;
-
-        // TODO: default?
         mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
     }
 

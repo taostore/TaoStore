@@ -4,7 +4,7 @@ import Messages.ClientRequest;
 import Messages.ServerResponse;
 
 /**
- * @brief
+ * @brief Interface for a TaoStore proxy
  */
 public interface Proxy {
     /**

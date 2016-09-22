@@ -1,21 +1,19 @@
 package TaoProxy;
 
 import Configuration.TaoConfigs;
-import com.google.common.primitives.Bytes;
-
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.util.Arrays;
-import java.util.Map;
 
 /**
- * @brief
+ * @brief Utility class with useful static methods
  */
 public class Utility {
-    public static SecretKey mSecretKey;
 
+    /**
+     * @brief Return a boolean array representing a path. true at a given spot in the array means that at that level, the
+     *        next node on the path will be the right child
+     * @param pathID
+     * @param height
+     * @return boolean array representing a path
+     */
     public static boolean[] getPathFromPID(long pathID, int height) {
         boolean[] ret = new boolean[height];
 
@@ -26,6 +24,7 @@ public class Utility {
         // The level we are currently checking to see if it is a right or left
         int level = ret.length - 1;
 
+        // Essentially checking the last bit of that pathID, 0 = go left 1 = go right, then moving on the the next bit
         while (pathID > 0) {
             direction = (int) pathID % 2;
 
@@ -41,11 +40,18 @@ public class Utility {
         return ret;
     }
 
+    /**
+     * @brief Get the greatest level of intersection between two paths
+     * @param pathOne
+     * @param pathTwo
+     * @return greatest level of intersection between two paths
+     */
     public static long getGreatestCommonLevel(long pathOne, long pathTwo) {
         // TODO: Check size
         long indexBit = 1 << (TaoConfigs.TREE_HEIGHT - 1);
         int greatestLevel = 0;
 
+        // Look for the first point where paths diverge
         while (greatestLevel < TaoConfigs.TREE_HEIGHT) {
             if ( (pathOne & indexBit) == (pathTwo & indexBit) ) {
                 indexBit = indexBit >> 1;
@@ -56,33 +62,5 @@ public class Utility {
         }
 
         return greatestLevel;
-    }
-
-    public static byte[] encrypt(byte[] data) {
-        try {
-            Cipher c = Cipher.getInstance("AES/CBC/PKCS5PADDING");
-            SecretKeySpec k = new SecretKeySpec(mSecretKey.getEncoded(), "AES");
-            c.init(Cipher.ENCRYPT_MODE, k);
-            byte[] encryptedData = c.doFinal(data);
-
-            return Bytes.concat(c.getIV(), encryptedData);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-
-    public static byte[] decrypt(byte[] encryptedData) {
-        try {
-            byte[] iv = Arrays.copyOfRange(encryptedData, 0, 16);
-            SecretKeySpec k = new SecretKeySpec(mSecretKey.getEncoded(), "AES");
-            Cipher c = Cipher.getInstance("AES/CBC/PKCS5PADDING");
-            c.init(Cipher.DECRYPT_MODE, k, new IvParameterSpec(iv));
-            return c.doFinal(Arrays.copyOfRange(encryptedData, 16, encryptedData.length));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
     }
 }

@@ -33,7 +33,7 @@ public class ProxyRequestTest {
 //
 //        int i = 0;
 //        for (Path p : pathList) {
-//            assertEquals(i, p.getID());
+//            assertEquals(i, p.getPathID());
 //            i++;
 //        }
 

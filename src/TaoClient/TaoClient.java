@@ -154,7 +154,7 @@ public class TaoClient implements Client {
      * @param obj
      * @param proxyResponse
      */
-    // TODO: Responses might come out of order, need to handle for this
+    // TODO: Responses might come out of order, need to handle this
     private void listenForResponse(Object obj, ProxyResponse proxyResponse) {
         // Create runnable to listen for a ProxyResponse
         Runnable r = () -> {
