@@ -34,25 +34,6 @@ public class TaoProxyResponse implements ProxyResponse {
     /**
      * @brief
      * @param clientRequestID
-     */
-    public TaoProxyResponse(long clientRequestID) {
-        mClientRequestID = clientRequestID;
-    }
-
-    /**
-     * @brief
-     * @param clientRequestID
-     * @param returnData
-     */
-    public TaoProxyResponse(long clientRequestID, byte[] returnData) {
-        mClientRequestID = clientRequestID;
-        mReturnData = returnData;
-        mWriteStatus = false;
-    }
-
-    /**
-     * @brief
-     * @param clientRequestID
      * @param writeStatus
      */
     public TaoProxyResponse(long clientRequestID, boolean writeStatus) {

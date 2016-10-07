@@ -16,13 +16,13 @@ public class TaoConfigs {
 
     public static final int WRITE_BACK_THRESHOLD = 3; //46;
 
-    public static String CLIENT_HOSTNAME = "10.138.0.2";
+    public static String CLIENT_HOSTNAME = "10.138.0.3";
     public static int CLIENT_PORT = 12337;
 
     public static String SERVER_HOSTNAME = "10.128.0.2";
     public static int SERVER_PORT = 12338;
 
-    public static String PROXY_HOSTNAME = "10.138.0.3";
+    public static String PROXY_HOSTNAME = "10.138.0.2";
     public static int PROXY_PORT = 12339;
 
 
@@ -44,8 +44,8 @@ public class TaoConfigs {
 
     public static final List<InetSocketAddress> PARTITION_SERVERS =
             Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
                     new InetSocketAddress("10.128.0.3", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
                     new InetSocketAddress("10.128.0.5", SERVER_PORT));
     /**
      * @brief Static method to initialize constants
