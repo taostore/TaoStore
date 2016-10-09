@@ -8,6 +8,7 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Bytes;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
@@ -16,6 +17,7 @@ import java.nio.channels.CompletionHandler;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -80,59 +82,64 @@ public class TaoProcessor implements Processor {
      * @brief Default constructor
      */
     public TaoProcessor(Proxy proxy, Sequencer sequencer, AsynchronousChannelGroup threadGroup, MessageCreator messageCreator, PathCreator pathCreator, CryptoUtil cryptoUtil, Subtree subtree, PositionMap positionMap) {
-        mProxy = proxy;
-        mSequencer = sequencer;
+        try {
+            mProxy = proxy;
+            mSequencer = sequencer;
 
-        // TODO: needed?
-        mThreadGroup = threadGroup;
+            // TODO: needed?
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+            ;
 
-        mMessageCreator = messageCreator;
-        mPathCreator = pathCreator;
-        mCryptoUtil = cryptoUtil;
+            mMessageCreator = messageCreator;
+            mPathCreator = pathCreator;
+            mCryptoUtil = cryptoUtil;
 
-        // Create stash
-        // TODO: pass this in?
-        mStash = new TaoStash();
+            // Create stash
+            // TODO: pass this in?
+            mStash = new TaoStash();
 
-        // Create request map
-        mRequestMap = new HashMap<>();
+            // Create request map
+            mRequestMap = new HashMap<>();
 
-        // Create response map
-        mResponseMap = new ConcurrentHashMap<>();
+            // Create response map
+            mResponseMap = new ConcurrentHashMap<>();
 
-        // Create requested path multiset
-        mPathReqMultiSet = ConcurrentHashMultiset.create();
+            // Create requested path multiset
+            mPathReqMultiSet = ConcurrentHashMultiset.create();
 
-        // Create subtree
-        // TODO: pass this in?
-        mSubtree = subtree;
+            // Create subtree
+            // TODO: pass this in?
+            mSubtree = subtree;
 
-        // Create counter the keep track of number of flushes
-        mWriteBackCounter = 0;
-        mNextWriteBack = TaoConfigs.WRITE_BACK_THRESHOLD;
+            // Create counter the keep track of number of flushes
+            mWriteBackCounter = 0;
+            mNextWriteBack = TaoConfigs.WRITE_BACK_THRESHOLD;
 
-        // Create list of queues of paths to be written
-        // The index into the list corresponds to the server at that same index in TaoConfigs.PARTITION_SERVERS
-        mWriteQueue = new ConcurrentLinkedQueue<>();
+            // Create list of queues of paths to be written
+            // The index into the list corresponds to the server at that same index in TaoConfigs.PARTITION_SERVERS
+            mWriteQueue = new ConcurrentLinkedQueue<>();
 
-        // Create position map
-        // TODO: pass this in?
-        mPositionMap = positionMap;
+            // Create position map
+            // TODO: pass this in?
+            mPositionMap = positionMap;
 
-        // Map each leaf to a relative leaf for the servers
-        mRelativeLeafMapper = new HashMap<>();
-        int numServers = TaoConfigs.PARTITION_SERVERS.size();
-        int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
-        int leavesPerPartition = numLeaves / numServers;
-        for (int i = 0; i < numLeaves; i += leavesPerPartition) {
-            long currentServerLeaves = i;
-            long relativeLeaf = 0;
-            while (currentServerLeaves < i + leavesPerPartition) {
-                TaoLogger.logForce("1 Mapping absolute leaf " + currentServerLeaves + " to relative leaf " + relativeLeaf);
-                mRelativeLeafMapper.put(currentServerLeaves, relativeLeaf);
-                currentServerLeaves++;
-                relativeLeaf++;
+            // Map each leaf to a relative leaf for the servers
+            mRelativeLeafMapper = new HashMap<>();
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
+            int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
+            int leavesPerPartition = numLeaves / numServers;
+            for (int i = 0; i < numLeaves; i += leavesPerPartition) {
+                long currentServerLeaves = i;
+                long relativeLeaf = 0;
+                while (currentServerLeaves < i + leavesPerPartition) {
+                    TaoLogger.logForce("1 Mapping absolute leaf " + currentServerLeaves + " to relative leaf " + relativeLeaf);
+                    mRelativeLeafMapper.put(currentServerLeaves, relativeLeaf);
+                    currentServerLeaves++;
+                    relativeLeaf++;
+                }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -203,12 +210,12 @@ public class TaoProcessor implements Processor {
 
             // Asynchronously connect to server
             // TODO: Generalize this somehow
-            TaoLogger.log("About to read");
+            TaoLogger.log("About to read from server thread: " + Thread.currentThread().getId());
             channel.connect(hostAddress, null, new CompletionHandler<Void, Void>() {
                 @Override
                 public void completed(Void result, Void attachment) {
                     // Create a read request to send to server
-                    TaoLogger.log("About to make header");
+                    TaoLogger.log("About to make header thread: " + Thread.currentThread().getId());
                     ProxyRequest proxyRequest = mMessageCreator.createProxyRequest();
                     proxyRequest.setPathID(relativeFinalPathID);
                     proxyRequest.setType(MessageTypes.PROXY_READ_REQUEST);
@@ -230,7 +237,7 @@ public class TaoProcessor implements Processor {
 
                                 @Override
                                 public void completed(Integer result, Void attachment) {
-                                    TaoLogger.log("Finished sending read request, going to listen for response");
+                                    TaoLogger.log("Finished sending read request, going to listen for response thread: " + Thread.currentThread().getId());
                                     // Asynchronously read response type and size from server
                                     ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
 
@@ -238,7 +245,7 @@ public class TaoProcessor implements Processor {
 
                                         @Override
                                         public void completed(Integer result, Void attachment) {
-                                            TaoLogger.log("Received response header");
+                                            TaoLogger.log("Received response header thread: " + Thread.currentThread().getId());
                                             // Flip the byte buffer for reading
                                             messageTypeAndSize.flip();
 
@@ -249,17 +256,18 @@ public class TaoProcessor implements Processor {
 
                                             // Asynchronously read response from server
                                             ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
-                                            TaoLogger.log("Going to receive rest of message");
+                                            TaoLogger.log("Going to receive rest of message thread: " + + Thread.currentThread().getId());
                                             channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
                                                 @Override
                                                 public void completed(Integer result, Void attachment) {
                                                     TaoLogger.log("Received first part of rest of message, remaining " + pathInBytes.remaining());
+                                                    TaoLogger.log("On thread: " + Thread.currentThread().getId());
                                                     // Make sure we read all the bytes for the path
                                                     while (pathInBytes.remaining() > 0) {
                                                         channel.read(pathInBytes, null, this);
                                                         return;
                                                     }
-                                                    TaoLogger.log("Received entire message");
+                                                    TaoLogger.log("Received entire message thread: " + Thread.currentThread().getId());
                                                     // Flip the byte buffer for reading
                                                     pathInBytes.flip();
 
@@ -283,30 +291,35 @@ public class TaoProcessor implements Processor {
                                                 @Override
                                                 public void failed(Throwable exc, Void attachment) {
                                                     // TODO: Implement?
+                                                    TaoLogger.log("Is there a fail? 1");
                                                 }
                                             });
                                         }
                                         @Override
                                         public void failed(Throwable exc, Void attachment) {
                                             // TODO: Implement?
+                                            TaoLogger.log("Is there a fail? 2");
                                         }
                                     });
                                 }
                                 @Override
                                 public void failed(Throwable exc, Void attachment) {
                                     // TODO: Implement?
+                                    TaoLogger.log("Is there a fail? 3");
                                 }
                             });
                         }
                         @Override
                         public void failed(Throwable exc, Void attachment) {
                             // TODO: Implement?
+                            TaoLogger.log("Is there a fail? 4");
                         }
                     });
                 }
                 @Override
                 public void failed(Throwable exc, Void attachment) {
                     // TODO: Implement?
+                    TaoLogger.log("Is there a fail? 5");
                 }
             });
         } catch (Exception e) {

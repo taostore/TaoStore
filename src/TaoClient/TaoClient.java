@@ -24,6 +24,8 @@ import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 
+import static org.junit.Assert.assertTrue;
+
 /**
  * @brief Class to represent a client of TaoStore
  */
@@ -58,7 +60,6 @@ public class TaoClient implements Client {
 
             // Create a thread pool for asynchronous sockets
             mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-
             listenForResponse();
         } catch (Exception e) {
             e.printStackTrace();
@@ -191,6 +192,7 @@ public class TaoClient implements Client {
                         // Start listening for other connections
                         channel.accept(null, this);
 
+                        TaoLogger.log("Just made a connection");
                         // Create a ByteBuffer to read in message type
                         ByteBuffer typeByteBuffer = MessageUtility.createTypeReceiveBuffer();
 
@@ -198,6 +200,7 @@ public class TaoClient implements Client {
                         ch.read(typeByteBuffer, null, new CompletionHandler<Integer, Void>() {
                             @Override
                             public void completed(Integer result, Void attachment) {
+                                TaoLogger.log("Going to read header");
                                 // Flip the byte buffer for reading
                                 typeByteBuffer.flip();
 
@@ -211,16 +214,19 @@ public class TaoClient implements Client {
                                     // Get the rest of the message
                                     ByteBuffer messageByteBuffer = ByteBuffer.allocate(messageLength);
 
+                                    TaoLogger.log("Going to read rest of message");
                                     // Do one last asynchronous read to get the rest of the message
                                     ch.read(messageByteBuffer, null, new CompletionHandler<Integer, Void>() {
                                         @Override
                                         public void completed(Integer result, Void attachment) {
+                                            TaoLogger.log("Read at least some of message");
                                             // Make sure we read all the bytes
                                             while (messageByteBuffer.remaining() > 0) {
+                                                TaoLogger.log("Going to read more of message");
                                                 ch.read(messageByteBuffer, null, this);
                                                 return;
                                             }
-
+                                            TaoLogger.log("Read all of message");
                                             // Flip the byte buffer for reading
                                             messageByteBuffer.flip();
 
@@ -237,6 +243,7 @@ public class TaoClient implements Client {
                                             clientAnswer.initFromSerialized(requestBytes);
                                             synchronized (clientAnswer) {
                                                 clientAnswer.notifyAll();
+                                                mResponseWaitMap.remove(proxyResponse.getClientRequestID());
                                             }
                                         }
 
@@ -292,10 +299,62 @@ public class TaoClient implements Client {
             e.printStackTrace();
         }
     }
+
+    public static void loadTest(Client client) {
+        long blockID = 3;
+        byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
+        Arrays.fill(dataToWrite, (byte) blockID);
+        TaoLogger.log("@@@@@@@@@@@@ Going to send write request for " + blockID);
+        boolean writeStatus = client.write(blockID, dataToWrite);
+        if (!writeStatus) {
+            TaoLogger.log("Exit 1");
+            System.exit(1);
+        }
+
+        blockID = 6;
+        byte[] dataToWrite1 = new byte[TaoConfigs.BLOCK_SIZE];
+        Arrays.fill(dataToWrite1, (byte) blockID);
+        TaoLogger.log("@@@@@@@@@@@@ Going to send write request for " + blockID);
+        boolean writeStatus1 = client.write(blockID, dataToWrite1);
+        if (!writeStatus1) {
+            TaoLogger.log("Exit 2");
+            System.exit(1);
+        }
+
+     //   client.printSubtree();
+
+        for (int i = 0; i < 1300; i++) {
+            if (i % 2 == 0) {
+                blockID = 3;
+            } else {
+                blockID = 6;
+            }
+
+            byte[] z = client.read(blockID);
+
+            TaoLogger.log("k Checking read " + i);
+
+            if (i % 2 == 0) {
+                if (!Arrays.equals(dataToWrite, z)) {
+                    TaoLogger.log("Exit 3");
+                    System.exit(1);
+                }
+
+            } else {
+                if (!Arrays.equals(dataToWrite1, z)) {
+                    TaoLogger.log("Exit 4");
+                    System.exit(1);
+                }
+            }
+//            client.printSubtree();
+        }
+    }
     public static void main(String[] args) {
         TaoLogger.logOn = true;
         long systemSize = 246420;
         TaoClient client = new TaoClient();
+        TaoLogger.log("Going to start load test");
+        loadTest(client);
         Scanner reader = new Scanner(System.in);
         while (true) {
             TaoLogger.log("W for write, R for read, P for print, Q for quit");

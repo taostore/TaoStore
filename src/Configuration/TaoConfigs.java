@@ -12,9 +12,9 @@ import java.util.List;
 public class TaoConfigs {
     public static final String ORAM_FILE = "oram.txt";
 
-    public static final int PROXY_THREAD_COUNT = 10;
+    public static final int PROXY_THREAD_COUNT = 20;
 
-    public static final int WRITE_BACK_THRESHOLD = 3; //46;
+    public static final int WRITE_BACK_THRESHOLD = 46;
 
     public static String CLIENT_HOSTNAME = "10.138.0.3";
     public static int CLIENT_PORT = 12337;
@@ -47,6 +47,7 @@ public class TaoConfigs {
                     new InetSocketAddress("10.128.0.3", SERVER_PORT),
                     new InetSocketAddress("10.128.0.4", SERVER_PORT),
                     new InetSocketAddress("10.128.0.5", SERVER_PORT));
+
     /**
      * @brief Static method to initialize constants
      * @param minServerSize

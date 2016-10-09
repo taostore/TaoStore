@@ -130,6 +130,7 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public Path getPath(long pathID) {
+        TaoLogger.log("TaoSubtree getPath was called for pathID " + pathID);
         // Create path and insert the root of tree
         Path returnPath = new TaoPath(pathID);
         returnPath.addBucket(mRoot);

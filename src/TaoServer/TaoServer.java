@@ -403,7 +403,9 @@ public class TaoServer {
                                                 @Override
                                                 public void completed(Integer result, Void attachment) {
                                                     // Make sure we sent all data
+                                                    TaoLogger.log("sent some data, possibly all");
                                                     if (returnMessageBuffer.remaining() > 0) {
+                                                        TaoLogger.log("did not send all the data, still have " + returnMessageBuffer.remaining());
                                                         ch.write(returnMessageBuffer, null, this);
                                                         return;
                                                     }
