@@ -2,11 +2,9 @@ package TaoProxy;
 
 import Configuration.TaoConfigs;
 import Messages.*;
+import com.google.common.primitives.Bytes;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousSocketChannel;
@@ -49,9 +47,11 @@ public class TaoSequencer implements Sequencer {
             mRequestMap = new ConcurrentHashMap<>();
             mRequestQueue = new ArrayBlockingQueue<>(QUEUE_SIZE);
 
+            // Create thread group
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
             // Run the serialize procedure in a different thread
             Runnable serializeProcedure = this::serializationProcedure;
-            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
             new Thread(serializeProcedure).start();
         } catch (Exception e) {
             e.printStackTrace();
@@ -75,18 +75,20 @@ public class TaoSequencer implements Sequencer {
 
     @Override
     public void onReceiveResponse(ClientRequest req, ServerResponse resp, byte[] data) {
-        // Create a new block and set the data
-        Block b = mBlockCreator.createBlock();
-        b.setData(data);
+        try {
+            // Create a new block and set the data
+            Block b = mBlockCreator.createBlock();
+            b.setData(data);
 
-        // Replace empty null block with new block
+            // Replace empty null block with new block
+            synchronized (mRequestMap) {
+                mRequestMap.replace(req, b);
+            }
 
-        synchronized (mRequestMap) {
-            mRequestMap.replace(req, b);
-            mRequestMap.notifyAll();
+            TaoLogger.logForce("Just finished sequencer onReceiveResponse 1");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        TaoLogger.log("Just finished sequencer onReceiveResponse thread: " + Thread.currentThread().getId());
     }
 
     @Override
@@ -98,18 +100,18 @@ public class TaoSequencer implements Sequencer {
                 // Blocks if there is no item in queue
                 ClientRequest req = mRequestQueue.take();
 
+
                 // Wait until the reply for req somes back
                 byte[] check;
                 synchronized (mRequestMap) {
                     check = mRequestMap.get(req).getData();
-
                     while (check == null) {
                         mRequestMap.wait();
                         check = mRequestMap.get(req).getData();
                     }
                 }
 
-                TaoLogger.log("Sequencer going to send response");
+                TaoLogger.logForce("Sequencer going to send response");
 
                 // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;
@@ -131,37 +133,26 @@ public class TaoSequencer implements Sequencer {
                     @Override
                     public void completed(Void result, Void attachment) {
                         // Create a read request to send to server
-                        TaoLogger.log("About to make header");
-                        ByteBuffer header = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_RESPONSE, serializedResponse.length);
-
-                        TaoLogger.log("About to send header");
-                        channel.write(header, null, new CompletionHandler<Integer, Void>() {
+                        TaoLogger.log("About to make message");
+                        byte[] header = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_RESPONSE, serializedResponse.length);
+                        ByteBuffer fullMessage = ByteBuffer.wrap(Bytes.concat(header, serializedResponse));
+                        TaoLogger.log("About to send message");
+                        channel.write(fullMessage, null, new CompletionHandler<Integer, Void>() {
                             @Override
                             public void completed(Integer result, Void attachment) {
-                                ByteBuffer sigh = ByteBuffer.wrap(serializedResponse);
-                                channel.write(sigh, null, new CompletionHandler<Integer, Void>() {
+                                TaoLogger.logForce("Responded, wrote " + result + " bytes");
+                                if (fullMessage.remaining() > 0) {
+                                    TaoLogger.logForce("did not send all the data, still have " + fullMessage.remaining());
+                                    channel.write(fullMessage, null, this);
+                                    return;
+                                } else {
+                                    TaoLogger.log("que");
+                                }
 
-                                    @Override
-                                    public void completed(Integer result, Void attachment) {
-                                        if (sigh.remaining() > 0) {
-                                            TaoLogger.log("did not send all the data, still have " + sigh.remaining());
-                                            channel.write(sigh, null, this);
-                                            return;
-                                        } else {
-                                            TaoLogger.log("que");
-                                        }
-
-                                        // Remove request from request map
-                                        synchronized (mRequestMap) {
-                                            mRequestMap.remove(req);
-                                        }
-                                    }
-
-                                    @Override
-                                    public void failed(Throwable exc, Void attachment) {
-
-                                    }
-                                });
+                                // Remove request from request map
+                                synchronized (mRequestMap) {
+                                    mRequestMap.remove(req);
+                                }
                             }
 
                             @Override

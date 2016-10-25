@@ -234,6 +234,11 @@ public class TaoBucket implements Bucket {
         return mUpdateTime;
     }
 
+    @Override
+    public void setUpdateTime(long timestamp) {
+        mUpdateTime = timestamp;
+    }
+
     /**
      * @brief Method to get block with given block ID from bucket. Returns null if blockID not found
      * @param blockID

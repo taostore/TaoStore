@@ -49,6 +49,8 @@ public interface Bucket {
      */
     long getUpdateTime();
 
+    void setUpdateTime(long timestamp);
+
     /**
      * @brief Method to check if the block at given index for this bucket is filled with valid data
      * @param index

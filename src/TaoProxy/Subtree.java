@@ -13,6 +13,8 @@ public interface Subtree {
      */
     void addPath(Path path);
 
+    void addPath(Path path, long timestamp);
+
     /**
      * @brief Method to get requested path from subtree
      * note: shallow copy

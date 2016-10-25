@@ -14,7 +14,7 @@ public class TaoConfigs {
 
     public static final int PROXY_THREAD_COUNT = 20;
 
-    public static final int WRITE_BACK_THRESHOLD = 46;
+    public static final int WRITE_BACK_THRESHOLD = 40;
 
     public static String CLIENT_HOSTNAME = "10.138.0.3";
     public static int CLIENT_PORT = 12337;

@@ -1,5 +1,9 @@
 package TaoProxy;
 
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+
 /**
  * @brief Class used for logging purposes
  */
@@ -23,7 +27,7 @@ public class TaoLogger {
      * @param message
      */
     public static void logForce(String message) {
-        System.out.println(message);
+        System.out.println(System.currentTimeMillis() + " :: " + message);
     }
 
     /**
@@ -32,7 +36,8 @@ public class TaoLogger {
      */
     public static void log(String message) {
         if (logOn) {
-            System.out.println(message);
+            String timeStamp = new SimpleDateFormat("yyyy/MM/dd_HH:mm:ss").format(Calendar.getInstance().getTime());
+            System.out.println(timeStamp + " :: " + message);
         }
     }
 

@@ -87,6 +87,7 @@ public class TaoServer {
     public byte[] readPath(long pathID) {
         // Array of byte arrays (buckets expressed as byte array)
         byte[][] pathInBytes = new byte[mServerTreeHeight + 1][];
+        TaoLogger.logForce("Starting readPath");
         try {
             // Acquire read lock
             mRWL.readLock().lock();
@@ -110,10 +111,18 @@ public class TaoServer {
 
             // Allocate byte array for this bucket
             pathInBytes[currentBucket] = new byte[mBucketSize];
-
+//            System.out.println("Bucket before read");
+//            for (Byte b : pathInBytes[currentBucket]) {
+//                System.out.print(b);
+//            }
+//            System.out.println();
             // Read bytes from the disk file into the byte array for this bucket
             mDiskFile.readFully(pathInBytes[currentBucket]);
-
+//            System.out.println("Bucket after read");
+//            for (Byte b : pathInBytes[currentBucket]) {
+//                System.out.print(b);
+//            }
+//            System.out.println();
             // Increment the current bucket
             currentBucket++;
 
@@ -121,11 +130,11 @@ public class TaoServer {
             for (Boolean right : pathDirection) {
                 // Navigate the array representing the tree
                 if (right) {
-                    TaoLogger.log("read right");
+                    TaoLogger.logForce("read right");
                     offset = (2 * index + 2) * mBucketSize;
                     index = offset / mBucketSize;
                 } else {
-                    TaoLogger.log("read left");
+                    TaoLogger.logForce("read left");
                     offset = (2 * index + 1) * mBucketSize;
                     index = offset / mBucketSize;
                 }
@@ -156,6 +165,12 @@ public class TaoServer {
 
             returnData = Bytes.concat(Longs.toByteArray(pathID), returnData);
             // Return complete path
+            TaoLogger.logForce("Ending read path");
+
+//            for (Byte b : returnData) {
+//                System.out.println(b);
+//            }
+
             return returnData;
         } catch (Exception e) {
             e.printStackTrace();
@@ -274,6 +289,7 @@ public class TaoServer {
                         @Override
                         public void completed(Integer result, Void attachment) {
                             TaoLogger.log("Reading message");
+                            TaoLogger.logForce("Got message header");
                             // Flip buffer for reading
                             messageTypeAndSize.flip();
 
@@ -295,7 +311,7 @@ public class TaoServer {
                                         ch.read(message, null, this);
                                         return;
                                     }
-
+                                    TaoLogger.logForce("Got rest of message");
                                     // Flip buffer for reading
                                     message.flip();
 
@@ -307,11 +323,12 @@ public class TaoServer {
                                     ProxyRequest proxyReq = mMessageCreator.parseProxyRequestBytes(requestBytes);
 
                                     ByteBuffer messageTypeAndLengthBuffer = null;
+                                    byte[] messageTypeAndLength = null;
                                     byte[] serializedResponse = null;
 
                                     // Check message type
                                     if (messageType == MessageTypes.PROXY_READ_REQUEST) {
-                                        TaoLogger.log("Serving a read request");
+                                        TaoLogger.logForce("Serving a read request");
                                         // Read the request path
                                         byte[] returnPathData = readPath(proxyReq.getPathID());
 
@@ -326,10 +343,10 @@ public class TaoServer {
                                         byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
                                         byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
 
-                                        byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
+                                        messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
                                         messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
                                     } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
-                                        TaoLogger.log("Serving a write request");
+                                        TaoLogger.logForce("Serving a write request");
                                         // Write each path
                                         boolean success = true;
                                         byte[] dataToWrite = proxyReq.getDataToWrite();
@@ -363,7 +380,7 @@ public class TaoServer {
                                         byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
                                         byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
 
-                                        byte[] messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
+                                        messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
                                         messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
                                     } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
                                         // Write each path
@@ -390,31 +407,19 @@ public class TaoServer {
 
                                     }
 
-                                    final int x = serializedResponse.length;
-                                    ByteBuffer returnMessageBuffer = ByteBuffer.wrap(serializedResponse);
-
+                                    ByteBuffer returnMessageBuffer = ByteBuffer.wrap(Bytes.concat(messageTypeAndLength, serializedResponse));
+                                    messageTypeAndLengthBuffer.array();
                                     // First we send the message type to the proxy along with the size of the message
-                                    ch.write(messageTypeAndLengthBuffer, null, new CompletionHandler<Integer, Void>() {
+                                    ch.write(returnMessageBuffer, null, new CompletionHandler<Integer, Void>() {
                                         @Override
                                         public void completed(Integer result, Void attachment) {
-                                            TaoLogger.log("writing a message of size " + x);
-                                            // Send message
-                                            ch.write(returnMessageBuffer, null, new CompletionHandler<Integer, Void>() {
-                                                @Override
-                                                public void completed(Integer result, Void attachment) {
-                                                    // Make sure we sent all data
-                                                    TaoLogger.log("sent some data, possibly all");
-                                                    if (returnMessageBuffer.remaining() > 0) {
-                                                        TaoLogger.log("did not send all the data, still have " + returnMessageBuffer.remaining());
-                                                        ch.write(returnMessageBuffer, null, this);
-                                                        return;
-                                                    }
-                                                }
-                                                @Override
-                                                public void failed(Throwable exc, Void attachment) {
-
-                                                }
-                                            });
+                                            TaoLogger.log("sent some data, possibly all");
+                                            TaoLogger.logForce("Responded, wrote " + result + " bytes");
+                                            if (returnMessageBuffer.remaining() > 0) {
+                                                TaoLogger.logForce("did not send all the data, still have " + returnMessageBuffer.remaining());
+                                                ch.write(returnMessageBuffer, null, this);
+                                              //  return;
+                                            }
                                         }
                                         @Override
                                         public void failed(Throwable exc, Void attachment) {
@@ -445,7 +450,7 @@ public class TaoServer {
     }
 
     public static void main(String[] args) {
-        TaoLogger.logOn = true;
+        TaoLogger.logOn = false;
         // Make sure user provides a storage size
         if (args.length != 1) {
             System.out.println("Please provide desired size of storage in MB");

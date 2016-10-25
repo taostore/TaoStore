@@ -1,5 +1,6 @@
 package TaoProxyTest;
 
+import Configuration.TaoConfigs;
 import TaoProxy.Utility;
 import org.junit.Test;
 
@@ -57,5 +58,13 @@ public class UtilityTest {
 //        } catch (Exception e) {
 //            e.printStackTrace();
 //        }
+    }
+
+    @Test
+    public void testGreatestCommonLevel() {
+        long systemSize = 246420;
+        TaoConfigs.initConfiguration(systemSize);
+
+        System.out.println(Utility.getGreatestCommonLevel(10, 10));
     }
 }

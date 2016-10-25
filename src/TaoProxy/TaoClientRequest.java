@@ -44,30 +44,32 @@ public class TaoClientRequest implements ClientRequest {
     @Override
     public void initFromSerialized(byte[] serialized) {
         int startIndex = 0;
+        TaoLogger.logForce("1");
         mBlockID = Longs.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 8));
         startIndex += 8;
-
+        TaoLogger.logForce("2");
         mType = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
-
+        TaoLogger.logForce("3");
         mRequestID = Longs.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 8));
         startIndex += 8;
-
+        TaoLogger.logForce("4");
         mData = Arrays.copyOfRange(serialized, startIndex, startIndex + TaoConfigs.BLOCK_SIZE);
         startIndex += TaoConfigs.BLOCK_SIZE;
-
+        TaoLogger.logForce("5");
         int hostnameSize = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
-
+        TaoLogger.logForce("6");
         byte[] hostnameBytes = Arrays.copyOfRange(serialized, startIndex, startIndex + hostnameSize);
         startIndex += hostnameSize;
-
+        TaoLogger.logForce("7");
         String hostname = new String(hostnameBytes, StandardCharsets.UTF_8);
-
+        TaoLogger.logForce("8");
         int port = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
-
+        TaoLogger.logForce("9");
         mClientAddress = new InetSocketAddress(hostname, port);
+        TaoLogger.logForce("10");
     }
 
     @Override

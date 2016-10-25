@@ -32,7 +32,7 @@ public class TaoCryptoUtilTest {
         keyGen.init(128);
         SecretKey mKey = keyGen.generateKey();
         TaoCryptoUtil mCryptoUtil = new TaoCryptoUtil(mKey);
-
+        System.out.println(TaoConfigs.ENCRYPTED_BUCKET_SIZE);
         PathCreator pc = new TaoBlockCreator();
 
         Path p = pc.createPath();
