@@ -604,7 +604,7 @@ public class TaoProcessor implements Processor {
 
         // Add this path to the write queue
         synchronized (mWriteQueue) {
-            TaoLogger.log("Adding " + pathID + " to mWriteQueue");
+            TaoLogger.logForce("Adding " + pathID + " to mWriteQueue");
             mWriteQueue.add(pathID);
         }
     }

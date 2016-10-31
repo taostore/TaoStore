@@ -48,10 +48,11 @@ public class TaoSequencer implements Sequencer {
             mRequestQueue = new ArrayBlockingQueue<>(QUEUE_SIZE);
 
             // Create thread group
-            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
 
             // Run the serialize procedure in a different thread
             Runnable serializeProcedure = this::serializationProcedure;
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
             new Thread(serializeProcedure).start();
         } catch (Exception e) {
             e.printStackTrace();
@@ -80,9 +81,17 @@ public class TaoSequencer implements Sequencer {
             Block b = mBlockCreator.createBlock();
             b.setData(data);
 
+            if (data == null) {
+                TaoLogger.logForce("THIS DATA IS NULL FOR SOME REASON");
+            } else
+            {
+                TaoLogger.logForce("THIS DATA NOT NULL");
+
+            }
             // Replace empty null block with new block
             synchronized (mRequestMap) {
                 mRequestMap.replace(req, b);
+                mRequestMap.notify();
             }
 
             TaoLogger.logForce("Just finished sequencer onReceiveResponse 1");

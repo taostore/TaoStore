@@ -68,7 +68,8 @@ public class TaoClientRequest implements ClientRequest {
         int port = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
         TaoLogger.logForce("9");
-        mClientAddress = new InetSocketAddress(hostname, port);
+        // Cache to avoid having to recreate InetSocketAddress object
+        mClientAddress = ClientAddressCache.getFromCache(hostname, Integer.toString(port));  //new InetSocketAddress(hostname, port);
         TaoLogger.logForce("10");
     }
 

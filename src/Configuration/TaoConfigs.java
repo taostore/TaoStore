@@ -48,6 +48,12 @@ public class TaoConfigs {
                     new InetSocketAddress("10.128.0.4", SERVER_PORT),
                     new InetSocketAddress("10.128.0.5", SERVER_PORT));
 
+ //   public static final List<InetSocketAddress> PARTITION_SERVERS =
+   //         Arrays.asList(new InetSocketAddress("10.142.0.2", SERVER_PORT));
+
+//    public static final List<InetSocketAddress> PARTITION_SERVERS =
+//            Arrays.asList(new InetSocketAddress("128.111.43.65", SERVER_PORT));
+
     /**
      * @brief Static method to initialize constants
      * @param minServerSize

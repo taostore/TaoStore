@@ -250,11 +250,11 @@ public class TaoProxy implements Proxy {
                                         // Get the rest of the bytes for the message
                                         byte[] requestBytes = new byte[messageLength];
                                         messageByteBuffer.get(requestBytes);
-                                        TaoLogger.logForce("Something 0");
+                                        TaoLogger.logForce("Going to make client request");
                                         // Create ClientRequest object based on read bytes
                                         ClientRequest clientReq = mMessageCreator.createClientRequest();
                                         clientReq.initFromSerialized(requestBytes);
-                                        TaoLogger.logForce("Something 1");
+                                        TaoLogger.logForce("Made client request");
                                         TaoLogger.logForce("Proxy will handle client request");
                                         // Handle request
                                         onReceiveRequest(clientReq);
@@ -289,6 +289,7 @@ public class TaoProxy implements Proxy {
 
     public static void main(String[] args) {
         TaoLogger.logOn = false;
+        ClientAddressCache.getFromCache("127.0.0.1", Integer.toString(TaoConfigs.CLIENT_PORT));
         if (args.length == 0) {
             System.out.println("Usage: Minimum size of storage server");
             System.exit(0);

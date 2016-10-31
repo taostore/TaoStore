@@ -36,8 +36,7 @@ public class TaoLogger {
      */
     public static void log(String message) {
         if (logOn) {
-            String timeStamp = new SimpleDateFormat("yyyy/MM/dd_HH:mm:ss").format(Calendar.getInstance().getTime());
-            System.out.println(timeStamp + " :: " + message);
+            System.out.println(System.currentTimeMillis() + " :: " + message);
         }
     }
 

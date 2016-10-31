@@ -53,6 +53,8 @@ public class TaoClient implements Client {
         try {
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
             mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
+            // mProxyAddress = new InetSocketAddress("127.0.0.1", TaoConfigs.PROXY_PORT);
+            // mClientAddress = new InetSocketAddress("127.0.0.1", TaoConfigs.CLIENT_PORT);
             mMessageCreator = new TaoMessageCreator();
             mResponseWaitMap = new ConcurrentHashMap<>();
 
@@ -124,6 +126,7 @@ public class TaoClient implements Client {
             // Set additional data depending on message type
             if (type == MessageTypes.CLIENT_READ_REQUEST) {
                 request.setType(MessageTypes.CLIENT_READ_REQUEST);
+                request.setData(new byte[TaoConfigs.BLOCK_SIZE]);
             } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
                 request.setType(MessageTypes.CLIENT_WRITE_REQUEST);
                 request.setData(data);
@@ -463,6 +466,7 @@ public class TaoClient implements Client {
                 byte[] result = client.read(blockID);
 
                 TaoLogger.logForce("The result of the read is a block filled with the number " + result[0]);
+                TaoLogger.logForce("Last number in the block is  " + result[result.length - 1]);
             } else if (option.equals("P")) {
                 client.printSubtree();
             }
