@@ -257,7 +257,7 @@ public class TaoProxy implements Proxy {
                                         TaoLogger.logForce("Made client request");
                                         TaoLogger.logForce("Proxy will handle client request");
                                         // Handle request
-                                        onReceiveRequest(clientReq);
+                                        // onReceiveRequest(clientReq);
                                     }
 
                                     @Override

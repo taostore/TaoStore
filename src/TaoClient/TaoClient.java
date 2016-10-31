@@ -188,57 +188,6 @@ public class TaoClient implements Client {
 
                 }
             });
-//                TaoLogger.logForce("sendRequest function");
-//            // Get proxy name and port
-//            Socket clientSocket = new Socket(mProxyAddress.getHostName(), mProxyAddress.getPort());
-//            TaoLogger.logForce("sendRequest function 0.25");
-//            // Create output stream
-//            DataOutputStream output = new DataOutputStream(clientSocket.getOutputStream());
-//            TaoLogger.logForce("sendRequest function 0.50");
-//            // Create client request
-//            ClientRequest request = mMessageCreator.createClientRequest();
-//            TaoLogger.logForce("sendRequest function 0.75");
-//            // Create request id
-//            // TODO: generate random request ID, or just sequentially increase?
-//            long requestID = mRequestID;
-//            mRequestID++;
-//
-//            // Create an empty response
-//            ProxyResponse proxyResponse = mMessageCreator.createProxyResponse();
-//
-//            mResponseWaitMap.put(requestID, proxyResponse);
-//
-//            // Set data for request
-//            request.setBlockID(blockID);
-//            request.setRequestID(requestID);
-//            request.setClientAddress(mClientAddress);
-//            TaoLogger.logForce("sendRequest function 1");
-//            // Set additional data depending on message type
-//            if (type == MessageTypes.CLIENT_READ_REQUEST) {
-//                request.setType(MessageTypes.CLIENT_READ_REQUEST);
-//            } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
-//                request.setType(MessageTypes.CLIENT_WRITE_REQUEST);
-//                request.setData(data);
-//            }
-//
-//            // Send request to proxy
-//            byte[] serializedRequest = request.serialize();
-//            byte[] header = MessageUtility.createMessageHeaderBytes(request.getType(), serializedRequest.length);
-//            TaoLogger.logForce("Really sent request");
-//            output.write(Bytes.concat(header, serializedRequest));
-//           // output.write(serializedRequest);
-//
-//            // Close streams and ports
-//            clientSocket.close();
-//            output.close();
-//
-//            // Wait until response
-//            synchronized (proxyResponse) {
-//                proxyResponse.wait();
-//            }
-//
-//            // Return proxy response
-//            return proxyResponse;
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -252,7 +201,6 @@ public class TaoClient implements Client {
     /**
      * @brief Private helper method that will wait for proxy responses
      */
-    // TODO: Responses might come out of order, need to handle this
     private void listenForResponse() {
         // Create runnable to listen for a ProxyResponse
         Runnable r = () -> {
