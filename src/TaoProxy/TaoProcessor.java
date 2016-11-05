@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -78,6 +79,8 @@ public class TaoProcessor implements Processor {
     // A map that maps each leafID to the relative leaf ID it would have within a server partition
     private Map<Long, Long> mRelativeLeafMapper;
 
+    private Map<InetSocketAddress, AsynchronousSocketChannel> mChannelMap;
+
     /**
      * @brief Default constructor
      */
@@ -88,7 +91,6 @@ public class TaoProcessor implements Processor {
 
             // TODO: needed?
             mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-            ;
 
             mMessageCreator = messageCreator;
             mPathCreator = pathCreator;
@@ -137,6 +139,15 @@ public class TaoProcessor implements Processor {
                     currentServerLeaves++;
                     relativeLeaf++;
                 }
+            }
+
+            mChannelMap = new HashMap<>();
+            for (int i = 0; i < numServers; i++) {
+                AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
+                Future connection = channel.connect(TaoConfigs.PARTITION_SERVERS.get(i));
+                connection.get();
+
+                mChannelMap.put(TaoConfigs.PARTITION_SERVERS.get(i), channel);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -207,12 +218,7 @@ public class TaoProcessor implements Processor {
             // returns from server
             mPathReqMultiSet.add(pathID);
             TaoLogger.logForce("readPath 11.5");
-            // Open up channel to server
-            AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
-            TaoLogger.logForce("readPath 12");
-           // InetSocketAddress hostAddress = mPositionMap.getServerForPosition(pathID);
-            // new InetSocketAddress(TaoConfigs.SERVER_HOSTNAME, TaoConfigs.SERVER_PORT);
-            TaoLogger.logForce("readPath 13");
+
             // Create effectively final variables to use for inner classes
             long relativeFinalPathID = mRelativeLeafMapper.get(pathID);
             long absoluteFinalPathID = pathID;
@@ -220,108 +226,99 @@ public class TaoProcessor implements Processor {
             // Asynchronously connect to server
             // TODO: Generalize this somehow
             TaoLogger.logForce("About to read from server thread: " + Thread.currentThread().getId());
-            channel.connect(mPositionMap.getServerForPosition(pathID), null, new CompletionHandler<Void, Void>() {
+            AsynchronousSocketChannel channelToServer = mChannelMap.get(mPositionMap.getServerForPosition(pathID));
+
+            // Create a read request to send to server
+            // TaoLogger.log("About to make header thread: " + Thread.currentThread().getId());
+            ProxyRequest proxyRequest = mMessageCreator.createProxyRequest();
+            proxyRequest.setPathID(relativeFinalPathID);
+            proxyRequest.setType(MessageTypes.PROXY_READ_REQUEST);
+
+            // Serialize request
+            byte[] requestData = proxyRequest.serialize();
+
+            // First we send the message type to the server along with the size of the message
+            byte[] messageType = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_READ_REQUEST, requestData.length);
+            ByteBuffer entireMessage = ByteBuffer.wrap(Bytes.concat(messageType, requestData));
+
+            TaoLogger.logForce("Begin sending read message");
+            // Asynchronously send message type and length to server
+            channelToServer.write(entireMessage, null, new CompletionHandler<Integer, Void>() {
                 @Override
-                public void completed(Void result, Void attachment) {
-                    TaoLogger.logForce("just connected to server");
-                    // Create a read request to send to server
-                    // TaoLogger.log("About to make header thread: " + Thread.currentThread().getId());
-                    ProxyRequest proxyRequest = mMessageCreator.createProxyRequest();
-                    proxyRequest.setPathID(relativeFinalPathID);
-                    proxyRequest.setType(MessageTypes.PROXY_READ_REQUEST);
+                public void completed(Integer result, Void attachment) {
+                    // Write the rest of the request data to the server
+                    // TaoLogger.log("About to send rest of message");
+                    TaoLogger.logForce("Sent read message");
+                    // TaoLogger.log("Finished sending read request, going to listen for response thread: " + Thread.currentThread().getId());
+                    // Asynchronously read response type and size from server
+                    ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
+                    TaoLogger.logForce("Begin reading message");
+                    channelToServer.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
 
-                    // Serialize request
-                    byte[] requestData = proxyRequest.serialize();
-
-                    // First we send the message type to the server along with the size of the message
-                    byte[] messageType = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_READ_REQUEST, requestData.length);
-                    ByteBuffer entireMessage = ByteBuffer.wrap(Bytes.concat(messageType, requestData));
-
-                    TaoLogger.logForce("Begin sending read message");
-                    // Asynchronously send message type and length to server
-                    channel.write(entireMessage, null, new CompletionHandler<Integer, Void>() {
                         @Override
                         public void completed(Integer result, Void attachment) {
-                            // Write the rest of the request data to the server
-                            // TaoLogger.log("About to send rest of message");
-                            TaoLogger.logForce("Sent read message");
-                            // TaoLogger.log("Finished sending read request, going to listen for response thread: " + Thread.currentThread().getId());
-                            // Asynchronously read response type and size from server
-                            ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
-                            TaoLogger.logForce("Begin reading message");
-                            channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
+                            // TaoLogger.log("Received response header thread: " + Thread.currentThread().getId());
+                            // Flip the byte buffer for reading
+                            messageTypeAndSize.flip();
 
+                            // Parse the message type and size from server
+                            int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
+                            int messageType = typeAndLength[0];
+                            int messageLength = typeAndLength[1];
+
+                            // Asynchronously read response from server
+                            ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
+                            // TaoLogger.log("Going to receive rest of message thread: " + + Thread.currentThread().getId());
+                            channelToServer.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
                                 @Override
                                 public void completed(Integer result, Void attachment) {
-                                    // TaoLogger.log("Received response header thread: " + Thread.currentThread().getId());
+                                    // TaoLogger.log("Received first part of rest of message, remaining " + pathInBytes.remaining());
+                                    // TaoLogger.log("On thread: " + Thread.currentThread().getId());
+                                    // Make sure we read all the bytes for the path
+                                    while (pathInBytes.remaining() > 0) {
+                                        channelToServer.read(pathInBytes, null, this);
+                                        return;
+                                    }
+                                    TaoLogger.logForce("Finished reading message");
+                                    // TaoLogger.log("Received entire message thread: " + Thread.currentThread().getId());
                                     // Flip the byte buffer for reading
-                                    messageTypeAndSize.flip();
+                                    pathInBytes.flip();
 
-                                    // Parse the message type and size from server
-                                    int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
-                                    int messageType = typeAndLength[0];
-                                    int messageLength = typeAndLength[1];
+                                    // Serve message based on type
+                                    if (messageType == MessageTypes.SERVER_RESPONSE) {
+                                        // Get message bytes
+                                        byte[] serialized = new byte[messageLength];
+                                        pathInBytes.get(serialized);
 
-                                    // Asynchronously read response from server
-                                    ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
-                                    // TaoLogger.log("Going to receive rest of message thread: " + + Thread.currentThread().getId());
-                                    channel.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
-                                        @Override
-                                        public void completed(Integer result, Void attachment) {
-                                            // TaoLogger.log("Received first part of rest of message, remaining " + pathInBytes.remaining());
-                                            // TaoLogger.log("On thread: " + Thread.currentThread().getId());
-                                            // Make sure we read all the bytes for the path
-                                            while (pathInBytes.remaining() > 0) {
-                                                channel.read(pathInBytes, null, this);
-                                                return;
-                                            }
-                                            TaoLogger.logForce("Finished reading message");
-                                            // TaoLogger.log("Received entire message thread: " + Thread.currentThread().getId());
-                                            // Flip the byte buffer for reading
-                                            pathInBytes.flip();
+                                        // Create ServerResponse object based on data
+                                        ServerResponse response = mMessageCreator.createServerResponse();
+                                        response.initFromSerialized(serialized);
 
-                                            // Serve message based on type
-                                            if (messageType == MessageTypes.SERVER_RESPONSE) {
-                                                // Get message bytes
-                                                byte[] serialized = new byte[messageLength];
-                                                pathInBytes.get(serialized);
+                                        // Set absolute path ID
+                                        response.setPathID(absoluteFinalPathID);
 
-                                                // Create ServerResponse object based on data
-                                                ServerResponse response = mMessageCreator.createServerResponse();
-                                                response.initFromSerialized(serialized);
-
-                                                // Set absolute path ID
-                                                response.setPathID(absoluteFinalPathID);
-
-                                                // Send response to proxy
-                                                mProxy.onReceiveResponse(req, response, fakeRead);
-                                            }
-                                        }
-                                        @Override
-                                        public void failed(Throwable exc, Void attachment) {
-                                            // TODO: Implement?
-                                            TaoLogger.log("Is there a fail? 1");
-                                        }
-                                    });
+                                        // Send response to proxy
+                                        mProxy.onReceiveResponse(req, response, fakeRead);
+                                    }
                                 }
                                 @Override
                                 public void failed(Throwable exc, Void attachment) {
                                     // TODO: Implement?
-                                    TaoLogger.log("Is there a fail? 2");
+                                    TaoLogger.log("Is there a fail? 1");
                                 }
                             });
                         }
                         @Override
                         public void failed(Throwable exc, Void attachment) {
                             // TODO: Implement?
-                            TaoLogger.log("Is there a fail? 4");
+                            TaoLogger.log("Is there a fail? 2");
                         }
                     });
                 }
                 @Override
                 public void failed(Throwable exc, Void attachment) {
                     // TODO: Implement?
-                    TaoLogger.log("Is there a fail? 5");
+                    TaoLogger.log("Is there a fail? 4");
                 }
             });
         } catch (Exception e) {
@@ -556,20 +553,20 @@ public class TaoProcessor implements Processor {
         Block currentBlock;
         int level = TaoConfigs.TREE_HEIGHT;
 
-        TaoLogger.log("About to go through blockHeap");
+        TaoLogger.logForce("About to go through blockHeap");
         // Flush path
         while (! blockHeap.isEmpty() && level >= 0) {
             // Get block at top of heap
             currentBlock = blockHeap.peek();
-            TaoLogger.log("Looking at block id " + currentBlock.getBlockID());
+            TaoLogger.logForce("Looking at block id " + currentBlock.getBlockID());
             // Find the path ID that this block maps to
             long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
-            TaoLogger.log("The path it is mapped to is " + pid);
-            TaoLogger.log("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
+            TaoLogger.logForce("The path it is mapped to is " + pid);
+            TaoLogger.logForce("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
 
             // Check if this block can be inserted at this level
             if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
-                TaoLogger.log("We can insert " + currentBlock.getBlockID() + " at level " + level);
+                TaoLogger.logForce("We can insert " + currentBlock.getBlockID() + " at level " + level);
                 // If the block can be inserted at this level, get the bucket
                 Bucket pathBucket = pathToFlush.getBucket(level);
 
@@ -697,7 +694,7 @@ public class TaoProcessor implements Processor {
                 synchronized (mWriteQueue) {
                     currentID = mWriteQueue.remove();
                 }
-                TaoLogger.log("Writeback for path id " + currentID + " is mapped to ");
+                TaoLogger.logForce("Writeback for path id " + currentID + " is mapped to ");
 
                 // Check what server is responsible for this path
                 InetSocketAddress isa = mPositionMap.getServerForPosition(currentID);
@@ -776,6 +773,7 @@ public class TaoProcessor implements Processor {
                 // Open up channel to server
                 AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
 
+                // TODO: Use existing connection, but make sure writing many different times doesn't have negative impact
                 // Asynchronously connect to server
                 channel.connect(serverAddr, null, new CompletionHandler<Void, Void>() {
                     @Override

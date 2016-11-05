@@ -69,6 +69,7 @@ public class TaoClientRequest implements ClientRequest {
         startIndex += 4;
         TaoLogger.logForce("9");
         // Cache to avoid having to recreate InetSocketAddress object
+        TaoLogger.logForce("The hostname we got is " + hostname);
         mClientAddress = ClientAddressCache.getFromCache(hostname, Integer.toString(port));  //new InetSocketAddress(hostname, port);
         TaoLogger.logForce("10");
     }

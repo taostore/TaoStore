@@ -59,6 +59,17 @@ public interface ProxyRequest {
     void setType(int type);
 
     /**
+     * @brief Get the timestamp of this request, if it is a write request
+     * @return the timestamp during which request path was sent to the server
+     */
+    long getTimestamp();
+
+    /**
+     * @brief Set the timestamp of this proxy request
+     * @param timestamp
+     */
+    void setTimestamp(long timestamp);
+    /**
      * @brief Method to serialize ProxyRequest into bytes
      * @return byte representation of ProxyRequest
      */

@@ -140,7 +140,7 @@ public class TaoCryptoUtil implements CryptoUtil {
 
             // Pad the front of the path
             if (data.length - 8 < fullPathSize) {
-                // TaoLogger.log("the path is short due to server partition");
+              //  TaoLogger.logForce("the path is short due to server partition");
                 // The length of data is not as large as would be required for a full path, so we must pad the front
                 // of the path with empty buckets
                 long difference = fullPathSize - (data.length - 8);
@@ -153,7 +153,7 @@ public class TaoCryptoUtil implements CryptoUtil {
             }
 
             for (int i = numPadBuckets; i < TaoConfigs.TREE_HEIGHT + 1; i++) {
-               // TaoLogger.log("decrypting bucket " + i + " of " + (TaoConfigs.TREE_HEIGHT + 1));
+                //TaoLogger.logForce("decrypting bucket " + i + " of " + (TaoConfigs.TREE_HEIGHT + 1));
                 // Get offset into data
                 int offset = pathHeader + (i - numPadBuckets) * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
 
@@ -162,13 +162,14 @@ public class TaoCryptoUtil implements CryptoUtil {
 
                 //TaoLogger.log("encrypted bucket about to be decrypted has size " + serializedBucket.length);
 
-                // Decrypt the serialized bucket
+
                 byte[] decryptedBucket = decrypt(serializedBucket);
+
 
                 // Cut off padding
                 decryptedBucket = Arrays.copyOf(decryptedBucket, bucketSize);
 
-                // TaoLogger.log("decryptedBucket has size " + decryptedBucket.length);
+               // TaoLogger.logForce("decryptedBucket has size " + decryptedBucket.length);
 
                 // Add bucket to path
                 Bucket b = new TaoBucket();
@@ -176,15 +177,15 @@ public class TaoCryptoUtil implements CryptoUtil {
                 p.addBucket(b);
             }
 
-            TaoLogger.log("Deserialized, decrypted path looks like: ");
-            int bucketNum = 0;
-            for (Bucket bk : p.getBuckets()) {
-                TaoLogger.log("\nBucket " + bucketNum);
-                for (Block bl : bk.getBlocks()) {
-                    TaoLogger.log("the block id here is " + bl.getBlockID());
-                }
-                bucketNum++;
-            }
+//            TaoLogger.logForce("Deserialized, decrypted path looks like: ");
+//            int bucketNum = 0;
+//            for (Bucket bk : p.getBuckets()) {
+//                TaoLogger.logForce("\nBucket " + bucketNum);
+//                for (Block bl : bk.getBlocks()) {
+//                    TaoLogger.logForce("the block id here is " + bl.getBlockID());
+//                }
+//                bucketNum++;
+//            }
 
             return p;
         } catch (Exception e) {

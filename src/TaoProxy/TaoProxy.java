@@ -133,13 +133,41 @@ public class TaoProxy implements Proxy {
 
                 // Create empty paths and serialize
                 Path defaultPath = mPathCreator.createPath();
+
+
+
                 defaultPath.setPathID(mRelativeLeafMapper.get(((long) i)));
+
+//                // Create empty buckets
+//                TaoBucket[] testBuckets = new TaoBucket[TaoConfigs.TREE_HEIGHT + 1];
+//
+//                // Fill in each bucket
+//                for (int q = 0; q < testBuckets.length; q++) {
+//                    // Create blocks for bucket
+//                    TaoBlock[] testBlocks = new TaoBlock[TaoConfigs.BLOCKS_IN_BUCKET];
+//                    byte[] bytes = new byte[TaoConfigs.BLOCK_SIZE];
+//
+//                    testBuckets[q] = new TaoBucket();
+//
+//                    for (int j = 0; j < testBlocks.length; j++) {
+//                        int blockID = Integer.parseInt(Integer.toString(i) + Integer.toString(q) + Integer.toString(j));
+//                        testBlocks[j] = new TaoBlock(blockID);
+//                        Arrays.fill(bytes, (byte) blockID);
+//                        testBlocks[j].setData(bytes);
+//
+//                        testBuckets[q].addBlock(testBlocks[j], 0);
+//                    }
+//
+//                    defaultPath.addBucket(testBuckets[q]);
+//                }
+
+
                 dataToWrite = mCryptoUtil.encryptPath(defaultPath);
                 pathSize = dataToWrite.length;
 
                 // Create a proxy write request
                 ProxyRequest writebackRequest = mMessageCreator.createProxyRequest();
-                writebackRequest.setType(MessageTypes.PROXY_WRITE_REQUEST);
+                writebackRequest.setType(MessageTypes.PROXY_INITIALIZE_REQUEST);
                 writebackRequest.setPathSize(pathSize);
                 writebackRequest.setDataToWrite(dataToWrite);
 
@@ -147,7 +175,7 @@ public class TaoProxy implements Proxy {
                 byte[] proxyRequest = writebackRequest.serialize();
 
                 // Send the type and size of message to server
-                byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.PROXY_WRITE_REQUEST);
+                byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.PROXY_INITIALIZE_REQUEST);
                 byte[] messageLengthBytes = Ints.toByteArray(proxyRequest.length);
                 output.write(Bytes.concat(messageTypeBytes, messageLengthBytes));
 
@@ -180,7 +208,7 @@ public class TaoProxy implements Proxy {
     @Override
     public void onReceiveRequest(ClientRequest req) {
         // When we receive a request, we first send it to the sequencer
-        mSequencer.onReceiveRequest(req);
+       // mSequencer.onReceiveRequest(req);
 
         // We then send the request to the processor, starting with the read path method
         TaoLogger.logForce("Proxy will tell processor to read path");
@@ -206,76 +234,12 @@ public class TaoProxy implements Proxy {
             // Asynchronously wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
-                public void completed(AsynchronousSocketChannel ch, Void att) {
+                public void completed(AsynchronousSocketChannel clientChannel, Void att) {
                     // Start listening for other connections
                     channel.accept(null, this);
 
-                    // Create a ByteBuffer to read in message type
-                    ByteBuffer typeByteBuffer = MessageUtility.createTypeReceiveBuffer();
-                    TaoLogger.logForce("\nProxy will begin receiving client request");
-                    // Asynchronously read message
-                    ch.read(typeByteBuffer, null, new CompletionHandler<Integer, Void>() {
-                        @Override
-                        public void completed(Integer result, Void attachment) {
-                            TaoLogger.logForce("Proxy got header of client request");
-                            // Flip the byte buffer for reading
-                            typeByteBuffer.flip();
-
-                            // Figure out the type of the message
-                            int[] typeAndLength = MessageUtility.parseTypeAndLength(typeByteBuffer);
-                            int messageType = typeAndLength[0];
-                            int messageLength = typeAndLength[1];
-
-                            // Serve message based on type
-                            if (messageType == MessageTypes.CLIENT_WRITE_REQUEST || messageType == MessageTypes.CLIENT_READ_REQUEST) {
-                                // Get the rest of the message
-                                ByteBuffer messageByteBuffer = ByteBuffer.allocate(messageLength);
-
-                                // Do one last asynchronous read to get the rest of the message
-                                ch.read(messageByteBuffer, null, new CompletionHandler<Integer, Void>() {
-                                    @Override
-                                    public void completed(Integer result, Void attachment) {
-                                        // Make sure we read all the bytes
-                                        while (messageByteBuffer.remaining() > 0) {
-                                            TaoLogger.logForce("Proxy needs to read more request");
-                                            ch.read(messageByteBuffer, null, this);
-                                            return;
-                                        }
-
-                                        TaoLogger.logForce("Proxy got entire message client request");
-
-                                        // Flip the byte buffer for reading
-                                        messageByteBuffer.flip();
-                                        TaoLogger.logForce("Something here takes a long time");
-                                        // Get the rest of the bytes for the message
-                                        byte[] requestBytes = new byte[messageLength];
-                                        messageByteBuffer.get(requestBytes);
-                                        TaoLogger.logForce("Going to make client request");
-                                        // Create ClientRequest object based on read bytes
-                                        ClientRequest clientReq = mMessageCreator.createClientRequest();
-                                        clientReq.initFromSerialized(requestBytes);
-                                        TaoLogger.logForce("Made client request");
-                                        TaoLogger.logForce("Proxy will handle client request");
-                                        // Handle request
-                                        // onReceiveRequest(clientReq);
-                                    }
-
-                                    @Override
-                                    public void failed(Throwable exc, Void attachment) {
-                                        // TODO: implement?
-                                    }
-                                });
-
-                            } else if (messageType == MessageTypes.PRINT_SUBTREE) {
-                                // Print the subtree, used for debugging
-                                mSubtree.printSubtree();
-                            }
-                        }
-                        @Override
-                        public void failed(Throwable exc, Void attachment) {
-                            // TODO: implement?
-                        }
-                    });
+                    Runnable serializeProcedure = () -> serveClient(clientChannel);
+                    new Thread(serializeProcedure).start();
                 }
                 @Override
                 public void failed(Throwable exc, Void att) {
@@ -287,9 +251,91 @@ public class TaoProxy implements Proxy {
         }
     }
 
+    private void serveClient(AsynchronousSocketChannel channel) {
+        try {
+            // Create a ByteBuffer to read in message type
+            ByteBuffer typeByteBuffer = MessageUtility.createTypeReceiveBuffer();
+            TaoLogger.logForce("\nProxy will begin receiving client request");
+            // Asynchronously read message
+            channel.read(typeByteBuffer, null, new CompletionHandler<Integer, Void>() {
+                @Override
+                public void completed(Integer result, Void attachment) {
+                    TaoLogger.logForce("Proxy got header of client request");
+                    // Flip the byte buffer for reading
+                    typeByteBuffer.flip();
+
+                    // Figure out the type of the message
+                    int[] typeAndLength = MessageUtility.parseTypeAndLength(typeByteBuffer);
+                    int messageType = typeAndLength[0];
+                    int messageLength = typeAndLength[1];
+
+                    // Serve message based on type
+                    if (messageType == MessageTypes.CLIENT_WRITE_REQUEST || messageType == MessageTypes.CLIENT_READ_REQUEST) {
+                        // Get the rest of the message
+                        ByteBuffer messageByteBuffer = ByteBuffer.allocate(messageLength);
+
+                        // Do one last asynchronous read to get the rest of the message
+                        channel.read(messageByteBuffer, null, new CompletionHandler<Integer, Void>() {
+                            @Override
+                            public void completed(Integer result, Void attachment) {
+                                // Make sure we read all the bytes
+                                while (messageByteBuffer.remaining() > 0) {
+                                    TaoLogger.logForce("Proxy needs to read more request");
+                                    channel.read(messageByteBuffer, null, this);
+                                    return;
+                                }
+
+                                TaoLogger.logForce("Proxy got entire message client request");
+
+                                // Flip the byte buffer for reading
+                                messageByteBuffer.flip();
+                                TaoLogger.logForce("Something here takes a long time");
+                                // Get the rest of the bytes for the message
+                                byte[] requestBytes = new byte[messageLength];
+                                messageByteBuffer.get(requestBytes);
+                                TaoLogger.logForce("Going to make client request");
+                                // Create ClientRequest object based on read bytes
+                                ClientRequest clientReq = mMessageCreator.createClientRequest();
+                                clientReq.initFromSerialized(requestBytes);
+                                TaoLogger.logForce("Made client request");
+                                TaoLogger.logForce("Proxy will handle client request");
+
+                                // When we receive a request, we first send it to the sequencer
+                                mSequencer.onReceiveRequest(clientReq);
+
+                                // Efficient to do it this way, but context switching might make this do a read and call it's onReceiveRequest before this thread does
+                                Runnable serializeProcedure = () -> serveClient(channel);
+                                new Thread(serializeProcedure).start();
+
+                                // Handle request
+                                onReceiveRequest(clientReq);
+                            }
+
+                            @Override
+                            public void failed(Throwable exc, Void attachment) {
+                                // TODO: implement?
+                            }
+                        });
+
+                    } else if (messageType == MessageTypes.PRINT_SUBTREE) {
+                        // Print the subtree, used for debugging
+                        mSubtree.printSubtree();
+                    }
+                }
+                @Override
+                public void failed(Throwable exc, Void attachment) {
+                    // TODO: implement?
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public static void main(String[] args) {
         TaoLogger.logOn = false;
-        ClientAddressCache.getFromCache("127.0.0.1", Integer.toString(TaoConfigs.CLIENT_PORT));
+        System.out.println(System.currentTimeMillis() + " Starting read");
+        ClientAddressCache.getFromCache("client.c.stunning-surge-145707.internal", Integer.toString(TaoConfigs.CLIENT_PORT));
         if (args.length == 0) {
             System.out.println("Usage: Minimum size of storage server");
             System.exit(0);
