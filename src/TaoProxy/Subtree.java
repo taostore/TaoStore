@@ -23,6 +23,8 @@ public interface Subtree {
      */
     Path getPath(long pathID);
 
+    Path getCopyOfPath(long pathID);
+
     /**
      * @brief Method to get a bucket in the subtree the contains the specified block with block ID == blockID
      * @param blockID

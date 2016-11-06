@@ -44,7 +44,6 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] encrypt(byte[] data) {
         try {
-            // Use AES encryption with padding
             Cipher c = Cipher.getInstance("AES/CBC/PKCS5PADDING");
             SecretKeySpec k = new SecretKeySpec(mSecretKey.getEncoded(), "AES");
             c.init(Cipher.ENCRYPT_MODE, k);
@@ -59,14 +58,12 @@ public class TaoCryptoUtil implements CryptoUtil {
     @Override
     public byte[] decrypt(byte[] encryptedData) {
         try {
-            // First get the initialization vector
             byte[] iv = Arrays.copyOfRange(encryptedData, 0, 16);
-
-            // Decrypt data
             SecretKeySpec k = new SecretKeySpec(mSecretKey.getEncoded(), "AES");
             Cipher c = Cipher.getInstance("AES/CBC/PKCS5PADDING");
             c.init(Cipher.DECRYPT_MODE, k, new IvParameterSpec(iv));
-            return c.doFinal(Arrays.copyOfRange(encryptedData, 16, encryptedData.length));
+            byte[] decrypted = c.doFinal(Arrays.copyOfRange(encryptedData, 16, encryptedData.length));
+            return decrypted;
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -153,23 +150,23 @@ public class TaoCryptoUtil implements CryptoUtil {
             }
 
             for (int i = numPadBuckets; i < TaoConfigs.TREE_HEIGHT + 1; i++) {
-                //TaoLogger.logForce("decrypting bucket " + i + " of " + (TaoConfigs.TREE_HEIGHT + 1));
+                TaoLogger.log("decrypting bucket " + i + " of " + (TaoConfigs.TREE_HEIGHT + 1));
                 // Get offset into data
                 int offset = pathHeader + (i - numPadBuckets) * (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
 
                 // Get serialized bucket from data
                 byte[] serializedBucket = Arrays.copyOfRange(data, offset, (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE + offset);
 
-                //TaoLogger.log("encrypted bucket about to be decrypted has size " + serializedBucket.length);
+                TaoLogger.log("About to do actual decryption");
 
 
                 byte[] decryptedBucket = decrypt(serializedBucket);
-
+                TaoLogger.log("Just did decryption");
 
                 // Cut off padding
                 decryptedBucket = Arrays.copyOf(decryptedBucket, bucketSize);
 
-               // TaoLogger.logForce("decryptedBucket has size " + decryptedBucket.length);
+               TaoLogger.log("Done decrypting, decryptedBucket has size " + decryptedBucket.length);
 
                 // Add bucket to path
                 Bucket b = new TaoBucket();

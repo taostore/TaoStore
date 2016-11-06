@@ -27,8 +27,19 @@ public class TaoLogger {
      * @param message
      */
     public static void logForce(String message) {
+//        System.out.println(System.currentTimeMillis() + " :: " + message);
+    }
+
+
+
+    public static void logForceWithReqID(String message, long requestID) {
+      //  System.out.println(System.currentTimeMillis() + " :: reqID #" + requestID + " :: " + message);
+    }
+
+    public static void logForce2(String message) {
         System.out.println(System.currentTimeMillis() + " :: " + message);
     }
+
 
     /**
      * @brief Log a message if logging is on

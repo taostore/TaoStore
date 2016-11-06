@@ -133,9 +133,6 @@ public class TaoProxy implements Proxy {
 
                 // Create empty paths and serialize
                 Path defaultPath = mPathCreator.createPath();
-
-
-
                 defaultPath.setPathID(mRelativeLeafMapper.get(((long) i)));
 
 //                // Create empty buckets
@@ -163,6 +160,9 @@ public class TaoProxy implements Proxy {
 
 
                 dataToWrite = mCryptoUtil.encryptPath(defaultPath);
+
+                // Due to JIT, we invoke a call to decrypt path
+                mCryptoUtil.decryptPath(dataToWrite);
                 pathSize = dataToWrite.length;
 
                 // Create a proxy write request
@@ -237,7 +237,7 @@ public class TaoProxy implements Proxy {
                 public void completed(AsynchronousSocketChannel clientChannel, Void att) {
                     // Start listening for other connections
                     channel.accept(null, this);
-
+                    TaoLogger.logForce("Got a connection");
                     Runnable serializeProcedure = () -> serveClient(clientChannel);
                     new Thread(serializeProcedure).start();
                 }
@@ -297,8 +297,7 @@ public class TaoProxy implements Proxy {
                                 // Create ClientRequest object based on read bytes
                                 ClientRequest clientReq = mMessageCreator.createClientRequest();
                                 clientReq.initFromSerialized(requestBytes);
-                                TaoLogger.logForce("Made client request");
-                                TaoLogger.logForce("Proxy will handle client request");
+                                TaoLogger.logForce("Proxy will handle client request #" + clientReq.getRequestID());
 
                                 // When we receive a request, we first send it to the sequencer
                                 mSequencer.onReceiveRequest(clientReq);
@@ -307,7 +306,10 @@ public class TaoProxy implements Proxy {
                                 Runnable serializeProcedure = () -> serveClient(channel);
                                 new Thread(serializeProcedure).start();
 
+                               // byte[] dummyData = new byte[TaoConfigs.BLOCK_SIZE];
+                               // Arrays.fill(dummyData, (byte) 3);
                                 // Handle request
+                             //   mSequencer.onReceiveResponse(clientReq, null, dummyData);
                                 onReceiveRequest(clientReq);
                             }
 
@@ -324,11 +326,12 @@ public class TaoProxy implements Proxy {
                 }
                 @Override
                 public void failed(Throwable exc, Void attachment) {
-                    // TODO: implement?
+                    return;
                 }
             });
         } catch (Exception e) {
             e.printStackTrace();
+            return;
         }
     }
 
