@@ -534,8 +534,8 @@ public class TaoProcessor implements Processor {
                     mSubtree.printSubtree();
                     TaoLogger.logForce("Stash has");
                     ((TaoStash) mStash).printKeySet();
-                    System.exit(1);
-                   // continue;
+                   // System.exit(1);
+                    continue;
                 }
             } else {
                 // If the block wasn't in the subtree, it should be in the stash
@@ -553,8 +553,8 @@ public class TaoProcessor implements Processor {
                     mSubtree.printSubtree();
                     TaoLogger.logForce("Stash has");
                     ((TaoStash) mStash).printKeySet();
-                    System.exit(0);
-                   // continue;
+                   // System.exit(0);
+                    continue;
                 }
             }
         }

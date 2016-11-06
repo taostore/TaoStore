@@ -365,10 +365,13 @@ public class TaoClient implements Client {
         byte[] z;
         TaoLogger.logForce2("Going to start load test");
         for (int i = 0; i < 1000; i++) {
-            TaoLogger.logForce2("Doing request #" + mRequestID);
-            readOrWrite = 0; //r.nextInt(2);
+            readOrWrite = r.nextInt(2);
+
+
+
             targetBlock = r.nextInt(numDataItems) + 1;
             if (readOrWrite == 0) {
+                TaoLogger.logForce2("Doing read request #" + mRequestID);
                 z = client.read(targetBlock);
 
                 if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
@@ -376,6 +379,7 @@ public class TaoClient implements Client {
                     System.exit(1);
                 }
             } else {
+                TaoLogger.logForce2("Doing write request #" + mRequestID);
                 writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
 
                 if (!writeStatus) {
