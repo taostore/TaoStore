@@ -54,39 +54,49 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
 
 
     @Override
-    public void setRight(Bucket b, int level) {
+    public boolean setRight(Bucket b, int level) {
         if (mRight == null) {
-            TaoLogger.log("Subtree bucket is null");
+            TaoLogger.logForce("Subtree bucket is null");
             if (b != null) {
                 TaoLogger.log("Subtree bucket is init with b");
                 mRight = new TaoSubtreeBucket(b, level);
+                return true;
             } else {
                 TaoLogger.log("Subtree bucket is init with null");
                 mRight = new TaoSubtreeBucket(level);
+                return true;
             }
         } else {
+            TaoLogger.logForce("Subtree bucket is not null");
             if (b == null) {
                 mRight = null;
+                return true;
             }
         }
+        return false;
     }
 
     @Override
-    public void setLeft(Bucket b, int level) {
+    public boolean setLeft(Bucket b, int level) {
         if (mLeft == null) {
-            TaoLogger.log("Subtree bucket is null");
+            TaoLogger.logForce("Subtree bucket is null");
             if (b != null) {
                 TaoLogger.log("Subtree bucket is init with b");
                 mLeft = new TaoSubtreeBucket(b, level);
+                return true;
             } else {
                 TaoLogger.log("Subtree bucket is init with null");
                 mLeft = new TaoSubtreeBucket(level);
+                return true;
             }
         } else {
+            TaoLogger.logForce("Subtree bucket is not null");
             if (b == null) {
                 mLeft = null;
+                return true;
             }
         }
+        return false;
     }
 
     @Override
@@ -102,12 +112,12 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
     @Override
     public void print() {
         List<Block> bs = getFilledBlocks();
-        TaoLogger.log("Bucket start --------------------");
-        TaoLogger.log("At level " + mLevel);
-        TaoLogger.log("Last updated at " + getUpdateTime());
+        TaoLogger.logForce("Bucket start --------------------");
+        TaoLogger.logForce("At level " + mLevel);
+        TaoLogger.logForce("Last updated at " + getUpdateTime());
         for (int i = 0; i < bs.size(); i++) {
-            TaoLogger.log("@@@ Block ID: " + bs.get(i).getBlockID());
+            TaoLogger.logForce("@@@ BlockID: " + bs.get(i).getBlockID());
         }
-        TaoLogger.log("Bucket end --------------------\n");
+        TaoLogger.logForce("Bucket end --------------------\n");
     }
 }

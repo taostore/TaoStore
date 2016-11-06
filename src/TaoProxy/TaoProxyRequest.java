@@ -20,6 +20,7 @@ public class TaoProxyRequest implements ProxyRequest {
     // Amount of bytes in a path
     private int mPathSize;
     private byte[] mDataToWrite;
+    private long mTimestamp;
 
     /**
      * @brief Default constructor
@@ -28,6 +29,7 @@ public class TaoProxyRequest implements ProxyRequest {
         mType = -1;
         mReadPathID = -1;
         mPathSize = -1;
+        mTimestamp = 0;
         mDataToWrite = null;
     }
 
@@ -71,10 +73,12 @@ public class TaoProxyRequest implements ProxyRequest {
             // TODO: Change this to not need paths anymore
             mReadPathID = -1;
             mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 4, 8));
+            mTimestamp = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 8, 16));
 
-            int serializedIndex = 8;
+
+            int serializedIndex = 16;
             int dataToWriteIndex = 0;
-            mDataToWrite = new byte[serializedData.length - 8];
+            mDataToWrite = new byte[serializedData.length - 16];
 
             while (serializedIndex < serializedData.length) {
                 System.arraycopy(serializedData, serializedIndex, mDataToWrite, dataToWriteIndex, mPathSize);
@@ -92,14 +96,16 @@ public class TaoProxyRequest implements ProxyRequest {
             mReadPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
             mPathSize = -1;
             mDataToWrite = null;
-        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST) {
+        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST || mType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
             // TODO: Change this to not need paths anymore
             mReadPathID = -1;
             mPathSize = Ints.fromByteArray(Arrays.copyOfRange(serialized, 4, 8));
+            mTimestamp = Longs.fromByteArray(Arrays.copyOfRange(serialized, 8, 16));
 
-            int serializedIndex = 8;
+
+            int serializedIndex = 16;
             int dataToWriteIndex = 0;
-            mDataToWrite = new byte[serialized.length - 8];
+            mDataToWrite = new byte[serialized.length - serializedIndex];
 
             while (serializedIndex < serialized.length) {
                 System.arraycopy(serialized, serializedIndex, mDataToWrite, dataToWriteIndex, mPathSize);
@@ -117,6 +123,16 @@ public class TaoProxyRequest implements ProxyRequest {
     @Override
     public void setType(int type) {
         mType = type;
+    }
+
+    @Override
+    public long getTimestamp() {
+        return mTimestamp;
+    }
+
+    @Override
+    public void setTimestamp(long timestamp) {
+        mTimestamp = timestamp;
     }
 
     @Override
@@ -159,11 +175,12 @@ public class TaoProxyRequest implements ProxyRequest {
             byte[] pathBytes = Longs.toByteArray(mReadPathID);
 
             returnData = Bytes.concat(typeBytes, pathBytes);
-        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST) {
+        } else if (mType == MessageTypes.PROXY_WRITE_REQUEST || mType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
             byte[] typeBytes = Ints.toByteArray(mType);
             byte[] pathSizeBytes = Ints.toByteArray(mPathSize);
+            byte[] timestampBytes = Longs.toByteArray(mTimestamp);
 
-            returnData = Bytes.concat(typeBytes, pathSizeBytes, mDataToWrite);
+            returnData = Bytes.concat(typeBytes, pathSizeBytes, timestampBytes, mDataToWrite);
         }
 
         return returnData;
