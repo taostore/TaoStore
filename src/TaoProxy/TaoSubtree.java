@@ -230,7 +230,7 @@ public class TaoSubtree implements Subtree {
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
-        printSubtree();
+        //printSubtree();
         int l = 0;
         TaoLogger.log("Got level " + l);
         for (Boolean right : pathDirection) {

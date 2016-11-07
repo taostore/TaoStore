@@ -177,29 +177,41 @@ public class TaoSequencer implements Sequencer {
                 TaoLogger.log("About to send message");
 
 
-                clientChannel.write(fullMessage, null, new CompletionHandler<Integer, Void>() {
-                    @Override
-                    public void completed(Integer result, Void attachment) {
-                        TaoLogger.logForce("Responded, wrote " + result + " bytes");
-                        if (fullMessage.remaining() > 0) {
-                            TaoLogger.logForce("did not send all the data, still have " + fullMessage.remaining());
-                            clientChannel.write(fullMessage, null, this);
-                            return;
-                        } else {
-                            TaoLogger.log("que");
-                        }
 
-                        // Remove request from request map
-                        synchronized (mRequestMap) {
-                            mRequestMap.remove(req);
-                        }
+                synchronized (clientChannel) {
+                    while (fullMessage.remaining() > 0) {
+                        Future<Integer> writeResult = clientChannel.write(fullMessage);
+                        writeResult.get();
                     }
 
-                    @Override
-                    public void failed(Throwable exc, Void attachment) {
-
+                    synchronized (mRequestMap) {
+                        mRequestMap.remove(req);
                     }
-                });
+
+//                    clientChannel.write(fullMessage, null, new CompletionHandler<Integer, Void>() {
+//                        @Override
+//                        public void completed(Integer result, Void attachment) {
+//                            TaoLogger.logForce("Responded, wrote " + result + " bytes");
+//                            if (fullMessage.remaining() > 0) {
+//                                TaoLogger.logForce("did not send all the data, still have " + fullMessage.remaining());
+//                                clientChannel.write(fullMessage, null, this);
+//                                return;
+//                            } else {
+//                                TaoLogger.log("que");
+//                            }
+//
+//                            // Remove request from request map
+//                            synchronized (mRequestMap) {
+//                                mRequestMap.remove(req);
+//                            }
+//                        }
+//
+//                        @Override
+//                        public void failed(Throwable exc, Void attachment) {
+//
+//                        }
+//                    });
+                }
             } catch (Exception e) {
                 e.printStackTrace();
             }
