@@ -494,7 +494,7 @@ public class TaoClient implements Client {
             long systemSize = 246420;
             TaoClient client = new TaoClient();
             TaoLogger.log("Going to start load test");
-            loadTestAsync(client);
+            loadTest(client);
             Scanner reader = new Scanner(System.in);
             while (true) {
                 TaoLogger.logForce("W for write, R for read, P for print, Q for quit");

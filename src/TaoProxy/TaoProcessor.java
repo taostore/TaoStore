@@ -562,7 +562,7 @@ public class TaoProcessor implements Processor {
                     mSubtree.printSubtree();
                     TaoLogger.logForce("Stash has");
                     ((TaoStash) mStash).printKeySet();
-                    System.exit(1);
+                    //System.exit(1);
                     continue;
                 }
             } else {
@@ -581,7 +581,7 @@ public class TaoProcessor implements Processor {
                     mSubtree.printSubtree();
                     TaoLogger.logForce("Stash has");
                     ((TaoStash) mStash).printKeySet();
-                    System.exit(0);
+                    //System.exit(0);
                     continue;
                 }
             }
@@ -649,8 +649,8 @@ public class TaoProcessor implements Processor {
             // Find the path ID that this block maps to
             long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
 
-            TaoLogger.log("The path it is mapped to is " + pid);
-            TaoLogger.log("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
+            TaoLogger.logForce("The path it is mapped to is " + pid);
+            TaoLogger.logForce("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
 
             // Check if this block can be inserted at this level
             if (Utility.getGreatestCommonLevel(pathID, pid) == level) {

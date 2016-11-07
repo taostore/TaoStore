@@ -33,7 +33,9 @@ public class TaoServer {
     private long mServerSize;
 
     // Read-write lock for bucket
+    // TODO: change this to regular lock. Concurrent reading of RandomAccessFile is not thread safe
     private final transient ReentrantReadWriteLock mRWL = new ReentrantReadWriteLock();
+    private Object[] mPathReadLock;
 
     // A MessageCreator to create different types of messages to be passed from client, proxy, and server
     private MessageCreator mMessageCreator;
@@ -66,14 +68,19 @@ public class TaoServer {
                 mServerTreeHeight -= levelSavedOnProxy;
             }
 
+            int numPaths = mServerTreeHeight;
+            mPathReadLock = new Object[1];
+
             // Create file object which the server will interact with
-            mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rws");
+            mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rwd");
 
             // Assign message creator
             mMessageCreator = messageCreator;
 
             // Calculate the total amount of space the tree will use
             mServerSize = ServerUtility.calculateSize(mServerTreeHeight, TaoConfigs.ENCRYPTED_BUCKET_SIZE);
+
+
 
             // Allocate space
             mDiskFile.setLength(mServerSize);
@@ -91,10 +98,10 @@ public class TaoServer {
     public byte[] readPath(long pathID) {
         // Array of byte arrays (buckets expressed as byte array)
         byte[][] pathInBytes = new byte[mServerTreeHeight + 1][];
-        TaoLogger.logForce("Starting readPath");
+        TaoLogger.logForce("Starting readPath for " + pathID);
         try {
             // Acquire read lock
-            mRWL.readLock().lock();
+            mRWL.writeLock().lock();
 
             // Get the directions for this path
             boolean[] pathDirection = ServerUtility.getPathFromPID(pathID, mServerTreeHeight);
@@ -121,6 +128,9 @@ public class TaoServer {
 //            }
 //            System.out.println();
             // Read bytes from the disk file into the byte array for this bucket
+            TaoLogger.logForce("1 readPath for " + pathID);
+            TaoLogger.logForce("1 Trying to read in " + pathInBytes[currentBucket].length + " bytes");
+            TaoLogger.logForce("1 Trying to read with offset " + offset);
             mDiskFile.readFully(pathInBytes[currentBucket]);
 //            System.out.println("Bucket after read");
 //            for (Byte b : pathInBytes[currentBucket]) {
@@ -150,6 +160,9 @@ public class TaoServer {
                 pathInBytes[currentBucket] = new byte[mBucketSize];
 
                 // Read bytes from the disk file into the byte array for this bucket
+                TaoLogger.logForce("2 readPath for " + pathID);
+                TaoLogger.logForce("2 Trying to read in " + pathInBytes[currentBucket].length + " bytes");
+                TaoLogger.logForce("2 Trying to read with offset " + offset);
                 mDiskFile.readFully(pathInBytes[currentBucket]);
 
                 // Increment the current bucket
@@ -157,7 +170,7 @@ public class TaoServer {
             }
 
             // Release the read lock
-            mRWL.readLock().unlock();
+            mRWL.writeLock().unlock();
 
             // Put first bucket into a new byte array representing the final return value
             byte[] returnData = pathInBytes[0];
@@ -192,6 +205,7 @@ public class TaoServer {
      */
     public boolean writePath(long pathID, byte[] data) {
         try {
+            TaoLogger.logForce("skeddit Trying to write a path of size " + data.length);
             // Acquire write lock
             mRWL.writeLock().lock();
 
@@ -212,6 +226,10 @@ public class TaoServer {
 
             // Seek into the file
             mDiskFile.seek(offsetInDisk);
+
+            TaoLogger.logForce("1 writePath for " + pathID);
+            TaoLogger.logForce("1 Trying to write " + (dataIndexStop - dataIndexStart) + " bytes");
+            TaoLogger.logForce("1 Trying to write with offset " + offsetInDisk);
 
             // Write bucket to disk
             mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
@@ -240,6 +258,10 @@ public class TaoServer {
                 mDiskFile.seek(offsetInDisk);
 
                 byte[] dataToWrite = Arrays.copyOfRange(data, dataIndexStart, dataIndexStop);
+
+                TaoLogger.logForce("2 writePath for " + pathID);
+                TaoLogger.logForce("2 Trying to write " + (dataIndexStop - dataIndexStart) + " bytes");
+                TaoLogger.logForce("2 Trying to write with offset " + offsetInDisk);
 
                 // Write bucket to disk
                 mDiskFile.write(dataToWrite);
@@ -453,10 +475,10 @@ public class TaoServer {
                                 @Override
                                 public void completed(Integer result, Void attachment) {
                                     TaoLogger.log("sent some data, possibly all");
-                                    TaoLogger.logForce("Responded, wrote " + result + " bytes");
+                                   // TaoLogger.logForce("Responded, wrote " + result + " bytes");
                                     boolean restartLoop = true;
                                     if (returnMessageBuffer.remaining() > 0) {
-                                        TaoLogger.logForce("did not send all the data, still have " + returnMessageBuffer.remaining());
+                                      //  TaoLogger.logForce("did not send all the data, still have " + returnMessageBuffer.remaining());
                                         channel.write(returnMessageBuffer, null, this);
                                         restartLoop = false;
                                         //  return;
