@@ -37,12 +37,12 @@ public class TaoClient implements Client {
 
     // Counter to keep track of current request number
     // Incremented after each request
-    private static int mRequestID = 0;
+    protected static int mRequestID = 0;
 
     // Thread group for asynchronous sockets
     protected AsynchronousChannelGroup mThreadGroup;
 
-    private Map<Long, ProxyResponse> mResponseWaitMap;
+    protected Map<Long, ProxyResponse> mResponseWaitMap;
 
     protected AsynchronousSocketChannel mChannel;
 
@@ -176,23 +176,6 @@ public class TaoClient implements Client {
                     writeResult.get();
                 }
             }
-//
-//
-//            mChannel.write(requestMessage, null, new CompletionHandler<Integer, Void>() {
-//                @Override
-//                public void completed(Integer result, Void attachment) {
-//                    if (requestMessage.remaining() > 0) {
-//                        TaoLogger.logForce("did not send all the data, still have " + requestMessage.remaining());
-//                        mChannel.write(requestMessage, null, this);
-//                        return;
-//                    }
-//                    TaoLogger.logForce("Finished writing");
-//                }
-//
-//                @Override
-//                public void failed(Throwable exc, Void attachment) {
-//                }
-//            });
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -372,9 +355,9 @@ public class TaoClient implements Client {
     public static void loadTest(Client client) {
         Random r = new Random();
 
-        int numDataItems = 100;
+        int numDataItems = 1000;
 
-        // Do a write for 20 blocks
+        // Do a write for numDataItems blocks
         long blockID;
         ArrayList<byte[]> listOfBytes = new ArrayList<>();
 
@@ -394,8 +377,6 @@ public class TaoClient implements Client {
                 TaoLogger.logForce("Write was successful for " + i);
             }
         }
-
-     //   client.printSubtree();
 
         int readOrWrite;
         int targetBlock;
@@ -433,7 +414,7 @@ public class TaoClient implements Client {
 
         int numDataItems = 100;
 
-        // Do a write for 20 blocks
+        // Do a write for numDataItems blocks
         long blockID;
         ArrayList<byte[]> listOfBytes = new ArrayList<>();
 
@@ -511,24 +492,13 @@ public class TaoClient implements Client {
                     byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
                     Arrays.fill(dataToWrite, (byte) fill);
 
-                   // TaoLogger.logForce("Going to send write request for " + blockID);
-                  //   boolean writeStatus = client.write(blockID, dataToWrite);
+                    TaoLogger.logForce("Going to send write request for " + blockID);
+                    boolean writeStatus = client.write(blockID, dataToWrite);
 
-                    Future<Boolean> s = client.writeAsync(blockID, dataToWrite);
-                    Future<Boolean> b = client.writeAsync(blockID, dataToWrite);
-//                    while (!s.isDone()) {
-//                        System.out.println("Write is not done yet");
-//                      //  Thread.sleep(1000);
-//                    }
-//
-//                    boolean writeStatus = s.get();
-//
-//                    if (writeStatus) {
-//                        TaoLogger.logForce("Write succeeded");
-//                    } else {
-//                        TaoLogger.logForce("Write did not succeed");
-//                        System.exit(1);
-//                    }
+                    if (!writeStatus) {
+                        TaoLogger.logForce("Write failed");
+                        System.exit(1);
+                    }
                 } else if (option.equals("R")) {
                     TaoLogger.logForce("Enter block ID to read from");
 

@@ -25,31 +25,31 @@ import java.util.concurrent.Executors;
  */
 public class TaoProxy implements Proxy {
     // Sequencer for proxy
-    private Sequencer mSequencer;
+    protected Sequencer mSequencer;
 
     // Processor for proxy
-    private Processor mProcessor;
+    protected Processor mProcessor;
 
     // Thread group for asynchronous sockets
-    private AsynchronousChannelGroup mThreadGroup;
+    protected AsynchronousChannelGroup mThreadGroup;
 
     // A MessageCreator to create different types of messages to be passed from client, proxy, and server
-    private MessageCreator mMessageCreator;
+    protected MessageCreator mMessageCreator;
 
     // A PathCreator
-    private PathCreator mPathCreator;
+    protected PathCreator mPathCreator;
 
     // A CryptoUtil
-    private CryptoUtil mCryptoUtil;
+    protected CryptoUtil mCryptoUtil;
 
     // Subtree
-    private Subtree mSubtree;
+    protected Subtree mSubtree;
 
     // A map that maps each leafID to the relative leaf ID it would have within a server partition
     // TODO: Share with processor
-    private Map<Long, Long> mRelativeLeafMapper;
+    protected Map<Long, Long> mRelativeLeafMapper;
 
-    private PositionMap mPositionMap;
+    protected PositionMap mPositionMap;
 
     /**
      * @brief Constructor
@@ -59,7 +59,7 @@ public class TaoProxy implements Proxy {
      */
     public TaoProxy(long minServerSize, MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree) {
         try {
-            // TODO: Remove this, for trace only
+            // For trace purposes
             TaoLogger.logOn = false;
 
             // Initialize needed constants
@@ -121,43 +121,28 @@ public class TaoProxy implements Proxy {
             byte[] dataToWrite;
             int pathSize;
 
+            Map<InetSocketAddress, Socket> mSocketMap = new HashMap<>();
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
+            for (int i = 0; i < numServers; i++) {
+                InetSocketAddress sa = TaoConfigs.PARTITION_SERVERS.get(i);
+                Socket socket = new Socket(sa.getHostName(), sa.getPort());
+                mSocketMap.put(sa, socket);
+            }
+
             // Loop to write each path to server
             for (int i = 0; i < totalPaths; i++) {
                 TaoLogger.logForce("Creating path " + i);
 
                 // Connect to server, create input and output streams
                 InetSocketAddress sa = mPositionMap.getServerForPosition(i);
-                Socket socket = new Socket(sa.getHostName(), sa.getPort());
-                DataOutputStream output = new DataOutputStream(socket.getOutputStream());
-                InputStream input = socket.getInputStream();
+              //  Socket socket = new Socket(sa.getHostName(), sa.getPort());
+                DataOutputStream output = new DataOutputStream(mSocketMap.get(sa).getOutputStream());
+                InputStream input = mSocketMap.get(sa).getInputStream();
+                        //socket.getInputStream();
 
                 // Create empty paths and serialize
                 Path defaultPath = mPathCreator.createPath();
                 defaultPath.setPathID(mRelativeLeafMapper.get(((long) i)));
-
-//                // Create empty buckets
-//                TaoBucket[] testBuckets = new TaoBucket[TaoConfigs.TREE_HEIGHT + 1];
-//
-//                // Fill in each bucket
-//                for (int q = 0; q < testBuckets.length; q++) {
-//                    // Create blocks for bucket
-//                    TaoBlock[] testBlocks = new TaoBlock[TaoConfigs.BLOCKS_IN_BUCKET];
-//                    byte[] bytes = new byte[TaoConfigs.BLOCK_SIZE];
-//
-//                    testBuckets[q] = new TaoBucket();
-//
-//                    for (int j = 0; j < testBlocks.length; j++) {
-//                        int blockID = Integer.parseInt(Integer.toString(i) + Integer.toString(q) + Integer.toString(j));
-//                        testBlocks[j] = new TaoBlock(blockID);
-//                        Arrays.fill(bytes, (byte) blockID);
-//                        testBlocks[j].setData(bytes);
-//
-//                        testBuckets[q].addBlock(testBlocks[j], 0);
-//                    }
-//
-//                    defaultPath.addBucket(testBuckets[q]);
-//                }
-
 
                 dataToWrite = mCryptoUtil.encryptPath(defaultPath);
 
@@ -192,9 +177,13 @@ public class TaoProxy implements Proxy {
                 input.read(message);
 
                 // Close socket and streams
-                output.close();
-                input.close();
-                socket.close();
+                // output.close();
+               // input.close();
+            }
+
+            for (int i = 0; i < numServers; i++) {
+                InetSocketAddress sa = TaoConfigs.PARTITION_SERVERS.get(i);
+                mSocketMap.get(sa).close();
             }
 
             TaoLogger.logForce("Finished init, running proxy");
@@ -208,7 +197,7 @@ public class TaoProxy implements Proxy {
     @Override
     public void onReceiveRequest(ClientRequest req) {
         // When we receive a request, we first send it to the sequencer
-       // mSequencer.onReceiveRequest(req);
+        // mSequencer.onReceiveRequest(req);
 
         // We then send the request to the processor, starting with the read path method
         TaoLogger.logForce("Proxy will tell processor to read path");
@@ -251,18 +240,25 @@ public class TaoProxy implements Proxy {
         }
     }
 
+    /**
+     * @brief
+     * @param channel
+     */
     private void serveClient(AsynchronousSocketChannel channel) {
         try {
             // Create a ByteBuffer to read in message type
             ByteBuffer typeByteBuffer = MessageUtility.createTypeReceiveBuffer();
-            TaoLogger.logForce("\nProxy will begin receiving client request");
+            TaoLogger.log("Proxy will begin receiving client request");
+
             // Asynchronously read message
+            // TODO: Maybe change this to use Future
             channel.read(typeByteBuffer, null, new CompletionHandler<Integer, Void>() {
                 @Override
                 public void completed(Integer result, Void attachment) {
-                    TaoLogger.logForce("Proxy got header of client request");
                     // Flip the byte buffer for reading
                     typeByteBuffer.flip();
+
+                    TaoLogger.log("Proxy received a client request");
 
                     // Figure out the type of the message
                     int[] typeAndLength = MessageUtility.parseTypeAndLength(typeByteBuffer);
@@ -280,36 +276,31 @@ public class TaoProxy implements Proxy {
                             public void completed(Integer result, Void attachment) {
                                 // Make sure we read all the bytes
                                 while (messageByteBuffer.remaining() > 0) {
-                                    TaoLogger.logForce("Proxy needs to read more request");
                                     channel.read(messageByteBuffer, null, this);
                                     return;
                                 }
 
-                                TaoLogger.logForce("Proxy got entire message client request");
-
                                 // Flip the byte buffer for reading
                                 messageByteBuffer.flip();
-                                TaoLogger.logForce("Something here takes a long time");
+
                                 // Get the rest of the bytes for the message
                                 byte[] requestBytes = new byte[messageLength];
                                 messageByteBuffer.get(requestBytes);
-                                TaoLogger.logForce("Going to make client request");
+
                                 // Create ClientRequest object based on read bytes
                                 ClientRequest clientReq = mMessageCreator.createClientRequest();
                                 clientReq.initFromSerialized(requestBytes);
-                                TaoLogger.logForce("Proxy will handle client request #" + clientReq.getRequestID());
+
+                                TaoLogger.log("Proxy will handle client request #" + clientReq.getRequestID());
 
                                 // When we receive a request, we first send it to the sequencer
                                 mSequencer.onReceiveRequest(clientReq);
 
-                                // Efficient to do it this way, but context switching might make this do a read and call it's onReceiveRequest before this thread does
+                                // Serve the next client request
                                 Runnable serializeProcedure = () -> serveClient(channel);
                                 new Thread(serializeProcedure).start();
 
-                               // byte[] dummyData = new byte[TaoConfigs.BLOCK_SIZE];
-                               // Arrays.fill(dummyData, (byte) 3);
                                 // Handle request
-                             //   mSequencer.onReceiveResponse(clientReq, null, dummyData);
                                 onReceiveRequest(clientReq);
                             }
 
@@ -337,8 +328,7 @@ public class TaoProxy implements Proxy {
 
     public static void main(String[] args) {
         TaoLogger.logOn = false;
-        System.out.println(System.currentTimeMillis() + " Starting read");
-        ClientAddressCache.getFromCache("client.c.stunning-surge-145707.internal", Integer.toString(TaoConfigs.CLIENT_PORT));
+
         if (args.length == 0) {
             System.out.println("Usage: Minimum size of storage server");
             System.exit(0);
@@ -348,12 +338,14 @@ public class TaoProxy implements Proxy {
         if (args.length == 2) {
             shouldInitServer = false;
         }
+
         // Create proxy and run
         TaoProxy proxy = new TaoProxy(Long.parseLong(args[0]), new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree());
 
         if (shouldInitServer) {
             proxy.initializeServer();
+        } else {
+            proxy.run();
         }
-
     }
 }

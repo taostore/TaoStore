@@ -19,6 +19,7 @@ import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -27,23 +28,22 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 // TODO: create interface
 public class TaoServer {
     // The file object the server will interact with
-    private RandomAccessFile mDiskFile;
+    protected RandomAccessFile mDiskFile;
 
     // The total amount of server storage in MB
-    private long mServerSize;
+    protected long mServerSize;
 
     // Read-write lock for bucket
     // TODO: change this to regular lock. Concurrent reading of RandomAccessFile is not thread safe
     private final transient ReentrantReadWriteLock mRWL = new ReentrantReadWriteLock();
-    private Object[] mPathReadLock;
 
     // A MessageCreator to create different types of messages to be passed from client, proxy, and server
-    private MessageCreator mMessageCreator;
+    protected MessageCreator mMessageCreator;
 
     // The height of the tree stored on this server
-    private int mServerTreeHeight;
+    protected int mServerTreeHeight;
 
-    private long mTimestamp;
+    protected long mTimestamp;
 
     /**
      * @brief Default constructor
@@ -69,7 +69,6 @@ public class TaoServer {
             }
 
             int numPaths = mServerTreeHeight;
-            mPathReadLock = new Object[1];
 
             // Create file object which the server will interact with
             mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rwd");
@@ -79,8 +78,6 @@ public class TaoServer {
 
             // Calculate the total amount of space the tree will use
             mServerSize = ServerUtility.calculateSize(mServerTreeHeight, TaoConfigs.ENCRYPTED_BUCKET_SIZE);
-
-
 
             // Allocate space
             mDiskFile.setLength(mServerSize);
@@ -322,199 +319,160 @@ public class TaoServer {
 
     private void serveProxy(AsynchronousSocketChannel channel) {
         try {
-            // Create byte buffer to use to read incoming message type and size
-            ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
 
-            // Asynchronously read message
-            channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
-                @Override
-                public void completed(Integer result, Void attachment) {
-                    TaoLogger.logForce("Reading message, remainder == " + messageTypeAndSize.remaining());
-                    TaoLogger.logForce("Got message header");
-                    // Flip buffer for reading
-                    messageTypeAndSize.flip();
+            while (true) {
+                // Create byte buffer to use to read incoming message type and size
+                ByteBuffer messageTypeAndSize = ByteBuffer.allocate(4 + 4);
 
-                    // Parse the message type and size from server
-                    byte[] messageTypeBytes = new byte[4];
-                    byte[] messageLengthBytes = new byte[4];
-                    messageTypeAndSize.get(messageTypeBytes);
-                    messageTypeAndSize.get(messageLengthBytes);
-                    int messageType = Ints.fromByteArray(messageTypeBytes);
-                    int messageLength = Ints.fromByteArray(messageLengthBytes);
+                Future initRead = channel.read(messageTypeAndSize);
+                initRead.get();
+                // Flip buffer for reading
+                messageTypeAndSize.flip();
+                // Parse the message type and size from server
+                byte[] messageTypeBytes = new byte[4];
+                byte[] messageLengthBytes = new byte[4];
+                messageTypeAndSize.get(messageTypeBytes);
+                messageTypeAndSize.get(messageLengthBytes);
+                messageTypeAndSize = null;
+                int messageType = Ints.fromByteArray(messageTypeBytes);
+                int messageLength = Ints.fromByteArray(messageLengthBytes);
 
-                    // Receive rest of message
-                    ByteBuffer message = ByteBuffer.allocate(messageLength);
-                    channel.read(message, null, new CompletionHandler<Integer, Void>() {
-                        @Override
-                        public void completed(Integer result, Void attachment) {
-                            // Makre sure to read entire message
-                            while (message.remaining() > 0) {
-                                channel.read(message, null, this);
-                                return;
-                            }
-                            TaoLogger.logForce("Got rest of message");
-                            // Flip buffer for reading
-                            message.flip();
+                ByteBuffer message = ByteBuffer.allocate(messageLength);
 
-                            // Get bytes from message
-                            byte[] requestBytes = new byte[messageLength];
-                            message.get(requestBytes);
-
-                            // Create proxy read request from bytes
-                            ProxyRequest proxyReq = mMessageCreator.parseProxyRequestBytes(requestBytes);
-
-                            ByteBuffer messageTypeAndLengthBuffer = null;
-                            byte[] messageTypeAndLength = null;
-                            byte[] serializedResponse = null;
-
-                            // Check message type
-                            if (messageType == MessageTypes.PROXY_READ_REQUEST) {
-                                TaoLogger.logForce("Serving a read request");
-                                // Read the request path
-                                byte[] returnPathData = readPath(proxyReq.getPathID());
-
-                                // Create a server response
-                                ServerResponse readResponse = mMessageCreator.createServerResponse();
-                                readResponse.setPathID(proxyReq.getPathID());
-                                readResponse.setPathBytes(returnPathData);
-
-                                // Send response to proxy
-                                serializedResponse = readResponse.serialize();
-
-                                byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
-                                byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
-
-                                messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
-                                messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
-                            } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
-                                TaoLogger.logForce("Serving a write request");
-
-                                boolean success = true;
-                                if (proxyReq.getTimestamp() >= mTimestamp) {
-                                    mTimestamp = proxyReq.getTimestamp();
-                                    // Write each path
-                                    byte[] dataToWrite = proxyReq.getDataToWrite();
-
-                                    int pathSize = proxyReq.getPathSize();
-                                    int startIndex = 0;
-                                    int endIndex = pathSize;
-                                    byte[] currentPath;
-                                    long currentPathID;
-                                    while (startIndex < dataToWrite.length) {
-                                        currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
-                                        currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
-
-                                        startIndex += pathSize;
-                                        endIndex += pathSize;
-                                        byte[] encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
-
-                                        if (!writePath(currentPathID, encryptedPath)) {
-                                            success = false;
-                                        }
-                                    }
-                                } else {
-                                    // The received write request is old, still return true since future writes
-                                    // have already been received
-                                    success = true;
-                                }
-                                // Create a server response
-                                ServerResponse writeResponse = mMessageCreator.createServerResponse();
-                                writeResponse.setIsWrite(success);
-
-                                // Send response to proxy
-                                serializedResponse = writeResponse.serialize();
-
-                                // First we send the message type to the server along with the size of the message
-                                byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
-                                byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
-
-                                messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
-                                messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
-                            } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
-                                // Write each path
-                                boolean success = true;
-                                byte[] dataToWrite = proxyReq.getDataToWrite();
-
-                                int pathSize = proxyReq.getPathSize();
-                                int startIndex = 0;
-                                int endIndex = pathSize;
-                                byte[] currentPath;
-                                long currentPathID;
-                                while (startIndex < dataToWrite.length) {
-                                    currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
-                                    currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
-
-                                    startIndex += pathSize;
-                                    endIndex += pathSize;
-                                    byte[] encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
-
-                                    if (!writePath(currentPathID, encryptedPath)) {
-                                        success = false;
-                                    }
-                                }
-
-                                // Create a server response
-                                ServerResponse writeResponse = mMessageCreator.createServerResponse();
-                                writeResponse.setIsWrite(success);
-
-                                // Send response to proxy
-                                serializedResponse = writeResponse.serialize();
-
-                                // First we send the message type to the server along with the size of the message
-                                byte[] messageTypeBytes = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
-                                byte[] messageLengthBytes = Ints.toByteArray(serializedResponse.length);
-
-                                messageTypeAndLength = Bytes.concat(messageTypeBytes, messageLengthBytes);
-                                messageTypeAndLengthBuffer = ByteBuffer.wrap(messageTypeAndLength);
-                            }
-
-                            ByteBuffer returnMessageBuffer = ByteBuffer.wrap(Bytes.concat(messageTypeAndLength, serializedResponse));
-                            messageTypeAndLengthBuffer.array();
-                            // First we send the message type to the proxy along with the size of the message
-                            channel.write(returnMessageBuffer, null, new CompletionHandler<Integer, Void>() {
-                                @Override
-                                public void completed(Integer result, Void attachment) {
-                                    TaoLogger.log("sent some data, possibly all");
-                                   // TaoLogger.logForce("Responded, wrote " + result + " bytes");
-                                    boolean restartLoop = true;
-                                    if (returnMessageBuffer.remaining() > 0) {
-                                      //  TaoLogger.logForce("did not send all the data, still have " + returnMessageBuffer.remaining());
-                                        channel.write(returnMessageBuffer, null, this);
-                                        restartLoop = false;
-                                        //  return;
-                                    }
-
-                                    if (messageType != MessageTypes.PROXY_INITIALIZE_REQUEST && restartLoop) {
-                                        TaoLogger.logForce("Do i got in here?");
-                                        serveProxy(channel);
-                                    } else {
-                                        TaoLogger.logForce("I should have gone away");
-                                    }
-                                }
-                                @Override
-                                public void failed(Throwable exc, Void attachment) {
-                                    TaoLogger.logForce("Do i got in here? 1");
-                                    serveProxy(channel);
-                                }
-                            });
-                        }
-                        @Override
-                        public void failed(Throwable exc, Void attachment) {
-                            TaoLogger.logForce("Do i got in here? 2");
-                            serveProxy(channel);
-                        }
-                    });
+                while (message.remaining() > 0) {
+                    Future entireRead = channel.read(message);
+                    entireRead.get();
                 }
-                @Override
-                public void failed(Throwable exc, Void attachment) {
-                    TaoLogger.logForce("Do i got in here? 3");
-                    serveProxy(channel);
+
+                message.flip();
+
+                // Get bytes from message
+                byte[] requestBytes = new byte[messageLength];
+                message.get(requestBytes);
+                message = null;
+                // Create proxy read request from bytes
+                ProxyRequest proxyReq = mMessageCreator.parseProxyRequestBytes(requestBytes);
+
+                byte[] messageTypeAndLength = null;
+                byte[] serializedResponse = null;
+
+                // Check message type
+                if (messageType == MessageTypes.PROXY_READ_REQUEST) {
+                    TaoLogger.logForce("Serving a read request");
+                    // Read the request path
+                    byte[] returnPathData = readPath(proxyReq.getPathID());
+
+                    // Create a server response
+                    ServerResponse readResponse = mMessageCreator.createServerResponse();
+                    readResponse.setPathID(proxyReq.getPathID());
+                    readResponse.setPathBytes(returnPathData);
+
+                    // Send response to proxy
+                    serializedResponse = readResponse.serialize();
+
+                    byte[] messageTypeBytes1 = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
+                    byte[] messageLengthBytes1 = Ints.toByteArray(serializedResponse.length);
+
+                    messageTypeAndLength = Bytes.concat(messageTypeBytes1, messageLengthBytes1);
+                } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
+                    TaoLogger.logForce("Serving a write request");
+
+                    boolean success = true;
+                    if (proxyReq.getTimestamp() >= mTimestamp) {
+                        mTimestamp = proxyReq.getTimestamp();
+                        // Write each path
+                        byte[] dataToWrite = proxyReq.getDataToWrite();
+
+                        int pathSize = proxyReq.getPathSize();
+                        int startIndex = 0;
+                        int endIndex = pathSize;
+                        byte[] currentPath;
+                        long currentPathID;
+                        while (startIndex < dataToWrite.length) {
+                            currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
+                            currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
+
+                            startIndex += pathSize;
+                            endIndex += pathSize;
+                            byte[] encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
+
+                            if (!writePath(currentPathID, encryptedPath)) {
+                                success = false;
+                            }
+                        }
+                    } else {
+                        // The received write request is old, still return true since future writes
+                        // have already been received
+                        success = true;
+                    }
+                    // Create a server response
+                    ServerResponse writeResponse = mMessageCreator.createServerResponse();
+                    writeResponse.setIsWrite(success);
+
+                    // Send response to proxy
+                    serializedResponse = writeResponse.serialize();
+
+                    // First we send the message type to the server along with the size of the message
+                    byte[] messageTypeBytes1 = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
+                    byte[] messageLengthBytes1 = Ints.toByteArray(serializedResponse.length);
+
+                    messageTypeAndLength = Bytes.concat(messageTypeBytes1, messageLengthBytes1);
+                } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
+                    // Write each path
+                    boolean success = true;
+                    byte[] dataToWrite = proxyReq.getDataToWrite();
+
+                    int pathSize = proxyReq.getPathSize();
+                    int startIndex = 0;
+                    int endIndex = pathSize;
+                    byte[] currentPath;
+                    long currentPathID;
+                    while (startIndex < dataToWrite.length) {
+                        currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
+                        currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
+
+                        startIndex += pathSize;
+                        endIndex += pathSize;
+                        byte[] encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
+
+                        if (!writePath(currentPathID, encryptedPath)) {
+                            success = false;
+                        }
+                    }
+
+                    // Create a server response
+                    ServerResponse writeResponse = mMessageCreator.createServerResponse();
+                    writeResponse.setIsWrite(success);
+
+                    // Send response to proxy
+                    serializedResponse = writeResponse.serialize();
+
+                    // First we send the message type to the server along with the size of the message
+                    byte[] messageTypeBytes1 = Ints.toByteArray(MessageTypes.SERVER_RESPONSE);
+                    byte[] messageLengthBytes1 = Ints.toByteArray(serializedResponse.length);
+
+                    messageTypeAndLength = Bytes.concat(messageTypeBytes1, messageLengthBytes1);
                 }
-            });
+
+                ByteBuffer returnMessageBuffer = ByteBuffer.wrap(Bytes.concat(messageTypeAndLength, serializedResponse));
+
+
+                while (returnMessageBuffer.remaining() > 0) {
+                    Future writeToProxy = channel.write(returnMessageBuffer);
+                    writeToProxy.get();
+                }
+
+
+                returnMessageBuffer = null;
+
+                if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
+                    break;
+                }
+            }
         } catch (Exception e) {
             TaoLogger.logForce("Do i got in here? 4");
             e.printStackTrace();
-            serveProxy(channel);
+          //  serveProxy(channel);
         }
     }
 

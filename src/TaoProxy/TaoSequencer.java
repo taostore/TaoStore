@@ -183,6 +183,7 @@ public class TaoSequencer implements Sequencer {
                         Future<Integer> writeResult = clientChannel.write(fullMessage);
                         writeResult.get();
                     }
+                    fullMessage = null;
 
                     synchronized (mRequestMap) {
                         mRequestMap.remove(req);

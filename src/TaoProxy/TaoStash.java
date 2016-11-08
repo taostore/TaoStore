@@ -30,7 +30,7 @@ public class TaoStash implements Stash {
 
     public void printKeySet() {
         for (Long key : mStash.keySet()) {
-            TaoLogger.logForce("Block ID : " + key);
+            TaoLogger.logForce("Block ID: " + key);
         }
     }
 
