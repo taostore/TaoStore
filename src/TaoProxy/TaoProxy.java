@@ -104,6 +104,53 @@ public class TaoProxy implements Proxy {
         }
     }
 
+    public TaoProxy(long minServerSize, MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree, Processor processor) {
+        try {
+            // For trace purposes
+            TaoLogger.logOn = false;
+
+            // Initialize needed constants
+            TaoConfigs.initConfiguration(minServerSize);
+
+            // Create a CryptoUtil
+            mCryptoUtil = new TaoCryptoUtil();
+
+            // Assign subtree
+            mSubtree = subtree;
+
+            // Create a position map
+            mPositionMap = new TaoPositionMap(TaoConfigs.PARTITION_SERVERS);
+
+            // Assign the message and path creators
+            mMessageCreator = messageCreator;
+            mPathCreator = pathCreator;
+
+            // Create a thread pool for asynchronous sockets
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Initialize the sequencer and proxy
+            mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
+            mProcessor = processor;
+
+            // Map each leaf to a relative leaf for the servers
+            mRelativeLeafMapper = new HashMap<>();
+            int numServers = TaoConfigs.PARTITION_SERVERS.size();
+            int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
+            int leavesPerPartition = numLeaves / numServers;
+            for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
+                long j = i;
+                long relativeLeaf = 0;
+                while (j < i + leavesPerPartition) {
+                    mRelativeLeafMapper.put(j, relativeLeaf);
+                    j++;
+                    relativeLeaf++;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * @brief Function to initialize an empty tree on the server side
      */

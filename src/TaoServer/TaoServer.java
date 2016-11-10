@@ -18,6 +18,8 @@ import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -45,6 +47,9 @@ public class TaoServer {
 
     protected long mTimestamp;
 
+    // Map each path to it's most recent timestamp
+    protected Map<Long, Long> mPathToTimestampMap;
+
     /**
      * @brief Default constructor
      */
@@ -54,6 +59,7 @@ public class TaoServer {
             TaoConfigs.initConfiguration(minServerSize);
 
             mTimestamp = 0;
+            mPathToTimestampMap = new ConcurrentHashMap<>();
 
             // Mke sure the amount of servers being used are a power of 2
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
@@ -125,9 +131,6 @@ public class TaoServer {
 //            }
 //            System.out.println();
             // Read bytes from the disk file into the byte array for this bucket
-            TaoLogger.logForce("1 readPath for " + pathID);
-            TaoLogger.logForce("1 Trying to read in " + pathInBytes[currentBucket].length + " bytes");
-            TaoLogger.logForce("1 Trying to read with offset " + offset);
             mDiskFile.readFully(pathInBytes[currentBucket]);
 //            System.out.println("Bucket after read");
 //            for (Byte b : pathInBytes[currentBucket]) {
@@ -141,11 +144,11 @@ public class TaoServer {
             for (Boolean right : pathDirection) {
                 // Navigate the array representing the tree
                 if (right) {
-                    TaoLogger.logForce("read right");
+                  //  TaoLogger.logForce("read right");
                     offset = (2 * index + 2) * mBucketSize;
                     index = offset / mBucketSize;
                 } else {
-                    TaoLogger.logForce("read left");
+                  //  TaoLogger.logForce("read left");
                     offset = (2 * index + 1) * mBucketSize;
                     index = offset / mBucketSize;
                 }
@@ -157,9 +160,6 @@ public class TaoServer {
                 pathInBytes[currentBucket] = new byte[mBucketSize];
 
                 // Read bytes from the disk file into the byte array for this bucket
-                TaoLogger.logForce("2 readPath for " + pathID);
-                TaoLogger.logForce("2 Trying to read in " + pathInBytes[currentBucket].length + " bytes");
-                TaoLogger.logForce("2 Trying to read with offset " + offset);
                 mDiskFile.readFully(pathInBytes[currentBucket]);
 
                 // Increment the current bucket
@@ -180,7 +180,6 @@ public class TaoServer {
             returnData = Bytes.concat(Longs.toByteArray(pathID), returnData);
             // Return complete path
             TaoLogger.logForce("Ending read path");
-
 //            for (Byte b : returnData) {
 //                System.out.println(b);
 //            }
@@ -202,7 +201,9 @@ public class TaoServer {
      */
     public boolean writePath(long pathID, byte[] data) {
         try {
-            TaoLogger.logForce("skeddit Trying to write a path of size " + data.length);
+            TaoLogger.logForce("Trying to write to pathID: " + pathID);
+            TaoLogger.logForce("Trying to write a path of size " + data.length);
+
             // Acquire write lock
             mRWL.writeLock().lock();
 
@@ -218,15 +219,14 @@ public class TaoServer {
             // Indices into the data byte array
             int dataIndexStart = 0;
             int dataIndexStop = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
+
             TaoLogger.log("The dataIndexStart is " + dataIndexStart);
             TaoLogger.log("The dataIndexStop is " + dataIndexStop);
 
             // Seek into the file
             mDiskFile.seek(offsetInDisk);
 
-            TaoLogger.logForce("1 writePath for " + pathID);
-            TaoLogger.logForce("1 Trying to write " + (dataIndexStop - dataIndexStart) + " bytes");
-            TaoLogger.logForce("1 Trying to write with offset " + offsetInDisk);
+
 
             // Write bucket to disk
             mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
@@ -247,6 +247,7 @@ public class TaoServer {
                     indexIntoTree = offsetInDisk / mBucketSize;
                 } else {
                     TaoLogger.log("write left");
+
                     offsetInDisk = (2 * indexIntoTree + 1) * mBucketSize;
                     indexIntoTree = offsetInDisk / mBucketSize;
                 }
@@ -255,10 +256,6 @@ public class TaoServer {
                 mDiskFile.seek(offsetInDisk);
 
                 byte[] dataToWrite = Arrays.copyOfRange(data, dataIndexStart, dataIndexStop);
-
-                TaoLogger.logForce("2 writePath for " + pathID);
-                TaoLogger.logForce("2 Trying to write " + (dataIndexStop - dataIndexStart) + " bytes");
-                TaoLogger.logForce("2 Trying to write with offset " + offsetInDisk);
 
                 // Write bucket to disk
                 mDiskFile.write(dataToWrite);
@@ -295,7 +292,7 @@ public class TaoServer {
             AsynchronousServerSocketChannel channel =
                     AsynchronousServerSocketChannel.open(threadGroup).bind(new InetSocketAddress(TaoConfigs.SERVER_PORT));
 
-            TaoLogger.logForce("Waiting for a connection");
+           // TaoLogger.logForce("Waiting for a connection");
             // Asynchronously wait for incoming connections
             channel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
                 @Override
@@ -358,7 +355,7 @@ public class TaoServer {
 
                 // Check message type
                 if (messageType == MessageTypes.PROXY_READ_REQUEST) {
-                    TaoLogger.logForce("Serving a read request");
+                   // TaoLogger.logForce("Serving a read request");
                     // Read the request path
                     byte[] returnPathData = readPath(proxyReq.getPathID());
 
@@ -375,7 +372,7 @@ public class TaoServer {
 
                     messageTypeAndLength = Bytes.concat(messageTypeBytes1, messageLengthBytes1);
                 } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
-                    TaoLogger.logForce("Serving a write request");
+                    TaoLogger.logForce("\nServing a write request\n");
 
                     boolean success = true;
                     if (proxyReq.getTimestamp() >= mTimestamp) {
@@ -399,6 +396,8 @@ public class TaoServer {
                             if (!writePath(currentPathID, encryptedPath)) {
                                 success = false;
                             }
+
+                            TaoLogger.logForce("\nFinished Serving a write request\n");
                         }
                     } else {
                         // The received write request is old, still return true since future writes
@@ -470,7 +469,6 @@ public class TaoServer {
                 }
             }
         } catch (Exception e) {
-            TaoLogger.logForce("Do i got in here? 4");
             e.printStackTrace();
           //  serveProxy(channel);
         }

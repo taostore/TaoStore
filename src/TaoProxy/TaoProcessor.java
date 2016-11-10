@@ -674,6 +674,8 @@ public class TaoProcessor implements Processor {
             }
         }
 
+        // mSubtree.addPath(decryptedPath, mWriteBackCounter);
+
         // Unlock the path
         pathToFlush.unlockPath();
 
@@ -867,7 +869,7 @@ public class TaoProcessor implements Processor {
                         ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
                         Future sendHeader;
                         while (messageType.remaining() > 0) {
-                             sendHeader = channel.write(messageType);
+                            sendHeader = channel.write(messageType);
                             sendHeader.get();
                         }
                         messageType = null;

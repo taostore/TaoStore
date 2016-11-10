@@ -424,17 +424,25 @@ public class TaoSubtree implements Subtree {
         // Get the directions for this path
         boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
-        // Try to delete all descendants
-        deleteChild(mRoot, pathID, pathDirection, 0, minTime, pathReqMultiSet);
 
-        // Check if we can delete root
-        // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
-        // thus it should be okay to set mRoot to null
-        if (mRoot.getUpdateTime() <= minTime && ! pathReqMultiSet.contains(pathID) && 0 > lastLevelToSave) {
-            TaoLogger.log("** Deleting the root node too");
-            mRoot = null;
-        } else {
-            TaoLogger.log("** Not deleting root node");
+        Path pathToDelete = getPath(pathID);
+        // Might have been deleted already
+        if (pathToDelete != null) {
+            pathToDelete.lockPath();
+            // Try to delete all descendants
+            deleteChild(mRoot, pathID, pathDirection, 0, minTime, pathReqMultiSet);
+
+            // Check if we can delete root
+            // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
+            // thus it should be okay to set mRoot to null
+            if (mRoot.getUpdateTime() <= minTime && !pathReqMultiSet.contains(pathID) && 0 > lastLevelToSave) {
+                TaoLogger.log("** Deleting the root node too");
+                mRoot = null;
+            } else {
+                TaoLogger.log("** Not deleting root node");
+            }
+
+            pathToDelete.unlockPath();
         }
     }
 
@@ -475,24 +483,24 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public void printSubtree() {
-        Queue<SubtreeBucket> q = new ConcurrentLinkedQueue<>();
-
-        if (mRoot != null) {
-            q.add(mRoot);
-        }
-
-        while (! q.isEmpty()) {
-            SubtreeBucket b = q.poll();
-
-            if (b.getLeft() != null) {
-                q.add(b.getLeft());
-            }
-
-            if (b.getRight() != null) {
-                q.add(b.getRight());
-            }
-
-            b.print();
-        }
+//        Queue<SubtreeBucket> q = new ConcurrentLinkedQueue<>();
+//
+//        if (mRoot != null) {
+//            q.add(mRoot);
+//        }
+//
+//        while (! q.isEmpty()) {
+//            SubtreeBucket b = q.poll();
+//
+//            if (b.getLeft() != null) {
+//                q.add(b.getLeft());
+//            }
+//
+//            if (b.getRight() != null) {
+//                q.add(b.getRight());
+//            }
+//
+//            b.print();
+//        }
     }
 }
