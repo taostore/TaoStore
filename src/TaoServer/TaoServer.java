@@ -50,6 +50,9 @@ public class TaoServer {
     // Map each path to it's most recent timestamp
     protected Map<Long, Long> mPathToTimestampMap;
 
+    // An array that will represent the tree, and keep track of the most recent timestamp of a particular bucket
+    protected long[] mMostRecentTimestamp;
+
     /**
      * @brief Default constructor
      */
@@ -59,7 +62,6 @@ public class TaoServer {
             TaoConfigs.initConfiguration(minServerSize);
 
             mTimestamp = 0;
-            mPathToTimestampMap = new ConcurrentHashMap<>();
 
             // Mke sure the amount of servers being used are a power of 2
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
@@ -74,8 +76,9 @@ public class TaoServer {
                 mServerTreeHeight -= levelSavedOnProxy;
             }
 
-            int numPaths = mServerTreeHeight;
+            int numPaths = 2 << mServerTreeHeight;
 
+            mMostRecentTimestamp = new long[numPaths];
             // Create file object which the server will interact with
             mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rwd");
 
@@ -375,7 +378,7 @@ public class TaoServer {
                     TaoLogger.logForce("\nServing a write request\n");
 
                     boolean success = true;
-                    if (proxyReq.getTimestamp() >= mTimestamp) {
+                    //if (proxyReq.getTimestamp() >= mTimestamp) {
                         mTimestamp = proxyReq.getTimestamp();
                         // Write each path
                         byte[] dataToWrite = proxyReq.getDataToWrite();
@@ -393,17 +396,18 @@ public class TaoServer {
                             endIndex += pathSize;
                             byte[] encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
 
+                            TaoLogger.logForce("Going to writepath " + currentPathID + " with timestamp " + proxyReq.getTimestamp());
                             if (!writePath(currentPathID, encryptedPath)) {
                                 success = false;
                             }
 
                             TaoLogger.logForce("\nFinished Serving a write request\n");
                         }
-                    } else {
-                        // The received write request is old, still return true since future writes
-                        // have already been received
-                        success = true;
-                    }
+//                    } else {
+//                        // The received write request is old, still return true since future writes
+//                        // have already been received
+//                        success = true;
+//                    }
                     // Create a server response
                     ServerResponse writeResponse = mMessageCreator.createServerResponse();
                     writeResponse.setIsWrite(success);

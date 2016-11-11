@@ -779,7 +779,7 @@ public class TaoProcessor implements Processor {
                 synchronized (mWriteQueue) {
                     currentID = mWriteQueue.remove();
                 }
-                TaoLogger.logForce("Writeback for path id " + currentID + " is mapped to ");
+                TaoLogger.logForce("Writeback for path id " + currentID + " with timestamp " + finalWriteBackTime);
 
                 // Check what server is responsible for this path
                 InetSocketAddress isa = mPositionMap.getServerForPosition(currentID);
@@ -793,7 +793,7 @@ public class TaoProcessor implements Processor {
                 temp.add(currentID);
 
                 // Add to list of all the path IDs
-                allWriteBackIDs.add(currentID);
+               // allWriteBackIDs.add(currentID);
             }
 
             // Current storage server we are targeting (corresponds to index into list of storage servers)
@@ -820,6 +820,8 @@ public class TaoProcessor implements Processor {
                 int pathSize = 0;
 
                 // TODO: Should this be a snapshot writeback?
+                // TODO: if a path is not present in subtree, i thought we skipped over it.
+                // TODO: we do not, the path is still
                 for (int i = 0; i < writebackPaths.size(); i++) {
                     // Get path
                     Path p = mSubtree.getPath(writebackPaths.get(i));
@@ -834,6 +836,7 @@ public class TaoProcessor implements Processor {
                         } else {
                             dataToWrite = Bytes.concat(dataToWrite, mCryptoUtil.encryptPath(p));
                         }
+                        allWriteBackIDs.add(writebackPaths.get(i));
                     }
                 }
                 TaoLogger.log("Going to do writeback");
@@ -848,6 +851,7 @@ public class TaoProcessor implements Processor {
                 writebackRequest.setType(MessageTypes.PROXY_WRITE_REQUEST);
                 writebackRequest.setPathSize(pathSize);
                 writebackRequest.setDataToWrite(dataToWrite);
+                writebackRequest.setTimestamp(finalWriteBackTime);
 
                 // Serialize the request
                 byte[] encryptedWriteBackPaths = writebackRequest.serialize();
@@ -885,6 +889,9 @@ public class TaoProcessor implements Processor {
                         TaoLogger.logForce("Sent info, now waiting to listen for server " + serverIndexFinal);
                         // Listen for server response
                         ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
+
+                        // TODO: Change this to use completion block
+
                         Future readHeader;
                         while (messageTypeAndSize.remaining() > 0) {
                             readHeader = channel.read(messageTypeAndSize);
@@ -949,7 +956,7 @@ public class TaoProcessor implements Processor {
                                             mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
                                         }
 
-                                        TaoLogger.log("TREE AFTER WRITEBACK");
+                                        TaoLogger.logForce("TREE AFTER WRITEBACK");
                                         mSubtree.printSubtree();
                                     }
                                 }

@@ -63,7 +63,7 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
                 return true;
             } else {
                 TaoLogger.log("Subtree bucket is init with null");
-                mRight = new TaoSubtreeBucket(level);
+                mRight = null;
                 return true;
             }
         } else {
@@ -86,7 +86,7 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
                 return true;
             } else {
                 TaoLogger.log("Subtree bucket is init with null");
-                mLeft = new TaoSubtreeBucket(level);
+                mLeft = null;
                 return true;
             }
         } else {
