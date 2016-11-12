@@ -28,12 +28,6 @@ public class TaoStash implements Stash {
         return allBlocks;
     }
 
-    public void printKeySet() {
-        for (Long key : mStash.keySet()) {
-            TaoLogger.logForce("Block ID: " + key);
-        }
-    }
-
     @Override
     public void addBlock(Block b) {
         mStash.put(b.getBlockID(), b);

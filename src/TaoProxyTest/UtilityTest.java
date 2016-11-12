@@ -1,17 +1,8 @@
 package TaoProxyTest;
 
 import Configuration.TaoConfigs;
-import TaoProxy.Utility;
+import Configuration.Utility;
 import org.junit.Test;
-
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
-import static org.junit.Assert.*;
 
 /**
  * Created by ajmagat on 5/14/16.

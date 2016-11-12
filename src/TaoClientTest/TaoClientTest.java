@@ -57,7 +57,7 @@ public class TaoClientTest {
         long blockID = 3;
         byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
         Arrays.fill(dataToWrite, (byte) blockID);
-        TaoLogger.log("@@@@@@@@@@@@ Going to send write request for " + blockID);
+        TaoLogger.logDebug("@@@@@@@@@@@@ Going to send write request for " + blockID);
         boolean writeStatus = client.write(blockID, dataToWrite);
         assertTrue(writeStatus);
 
@@ -67,24 +67,24 @@ public class TaoClientTest {
 //            e.printStackTrace();
 //        }
 
-        TaoLogger.log("\n\n");
+        TaoLogger.logDebug("\n\n");
 
         // Send write request
         blockID = 6;
         byte[] dataToWrite1 = new byte[TaoConfigs.BLOCK_SIZE];
         Arrays.fill(dataToWrite1, (byte) blockID);
-        TaoLogger.log("@@@@@@@@@@@@ Going to send write request for " + blockID);
+        TaoLogger.logDebug("@@@@@@@@@@@@ Going to send write request for " + blockID);
         boolean writeStatus1 = client.write(blockID, dataToWrite1);
         assertTrue(writeStatus1);
 
-        TaoLogger.log("\n\n");
+        TaoLogger.logDebug("\n\n");
 
 
         blockID = 3;
-        TaoLogger.log("@@@@@@@@@@@@ Going to send read request for " + blockID);
+        TaoLogger.logDebug("@@@@@@@@@@@@ Going to send read request for " + blockID);
         byte[] s = client.read(blockID);
 
-        TaoLogger.log("Read request for blockID " + blockID + " has data:");
+        TaoLogger.logDebug("Read request for blockID " + blockID + " has data:");
 
 //        try {
 //            Thread.sleep(3000);
@@ -93,23 +93,23 @@ public class TaoClientTest {
 //        }
 
         for (byte b : s) {
-            TaoLogger.log(b);
+           // TaoLogger.logDebug(b);
         }
-        TaoLogger.log("\n\n\n\n");
+        TaoLogger.logDebug("\n\n\n\n");
 
-        TaoLogger.log("\n\n");
+        TaoLogger.logDebug("\n\n");
 
         blockID = 6;
-        TaoLogger.log("@@@@@@@@@@@@ Going to send read request for " + blockID);
+        TaoLogger.logDebug("@@@@@@@@@@@@ Going to send read request for " + blockID);
         byte[] y = client.read(blockID);
 
-        TaoLogger.log("Read request for blockID " + blockID + " has data:");
+        TaoLogger.logDebug("Read request for blockID " + blockID + " has data:");
 
 
         for (byte b : y) {
-            TaoLogger.log(b);
+           // TaoLogger.logDebug(b);
         }
-        TaoLogger.log("\n\n\n\n");
+        TaoLogger.logDebug("\n\n\n\n");
 
         for (int i = 0; i < 1000; i++) {
             if (i % 2 == 0) {
@@ -119,11 +119,10 @@ public class TaoClientTest {
             }
             byte[] z = client.read(blockID);
 
-            TaoLogger.log("11 Read request for blockID " + blockID + " has data:");
+            TaoLogger.logDebug("11 Read request for blockID " + blockID + " has data:");
             for (byte b : z) {
-                TaoLogger.log(b);
+               // TaoLogger.logDebug(b);
             }
-            TaoLogger.log();
 
             if (i % 2 == 0) {
                 assertTrue(Arrays.equals(dataToWrite, z));

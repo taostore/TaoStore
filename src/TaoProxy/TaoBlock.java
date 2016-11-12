@@ -105,9 +105,8 @@ public class TaoBlock implements Block {
             return true;
         }
 
-        // Two requests are equal if they have the same request ID
+        // Two blocks are equal if they have the same blockID
         Block rhs = (Block) obj;
-
         if (mID != rhs.getBlockID()) {
             return false;
         }

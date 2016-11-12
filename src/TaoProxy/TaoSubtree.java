@@ -1,6 +1,7 @@
 package TaoProxy;
 
 import Configuration.TaoConfigs;
+import Configuration.Utility;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,12 +34,9 @@ public class TaoSubtree implements Subtree {
 
         // Check if we have more than one server, in which case we must initialize the subtree
         if (numServers > 1) {
-            if ((numServers & -numServers) != numServers) {
-                // TODO: only use a power of two of the servers
-            }
-
             lastLevelToSave = (numServers / 2) - 1;
-            TaoLogger.log("The last level to save is " + lastLevelToSave);
+            TaoLogger.logInfo("The last level to save is " + lastLevelToSave);
+
             // Initialize the needed amount of top nodes
             mRoot = new TaoSubtreeBucket(0);
 
@@ -49,8 +47,6 @@ public class TaoSubtree implements Subtree {
             // If we need to save more than just the root, we do a recursive preorder
             if (currentLevel <= lastLevelToSave) {
                 recursivePreorderInit(b, currentLevel);
-            } else {
-                TaoLogger.log("not saving anymore levels");
             }
         } else {
             lastLevelToSave = -1;
@@ -63,14 +59,19 @@ public class TaoSubtree implements Subtree {
      * @param level
      */
     private void recursivePreorderInit(SubtreeBucket b, int level) {
+        // Set the left and right child
         b.setRight(new TaoSubtreeBucket(), level);
         b.setLeft(new TaoSubtreeBucket(), level);
+
+        // Increase level
         level++;
 
+        // If we have already gone passed the last level to save, we stop
         if (level > lastLevelToSave) {
             return;
         }
 
+        // Continue init
         recursivePreorderInit(b.getLeft(), level);
         recursivePreorderInit(b.getRight(), level);
     }
@@ -82,22 +83,22 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public void addPath(Path path, long timestamp) {
-        TaoLogger.logForce("Going to add path " + path.getPathID() + " to subtree");
+        TaoLogger.logDebug("Going to add path " + path.getPathID() + " to subtree");
+
+        // Boolean to keep track of if a bucket was added to the current level
         boolean added = false;
+
         // Check if subtree is empty
         if (mRoot == null) {
             // If empty, initialize root with root of given path
             mRoot = new TaoSubtreeBucket(path.getBucket(0));
             added = true;
-        } else {
-            TaoLogger.log("Not going to init root");
         }
 
         // If we just added the root, we need to add the blocks to the block map
         if (added) {
-            List<Block> blocksToAdd = mRoot.getFilledBlocks();
-            for (Block b : blocksToAdd) {
-                TaoLogger.logForce("Adding blockID " + b.getBlockID());
+            for (Block b : mRoot.getFilledBlocks()) {
+                TaoLogger.logDebug("Adding blockID " + b.getBlockID());
                 mBlockMap.put(b.getBlockID(), mRoot);
             }
         }
@@ -107,79 +108,82 @@ public class TaoSubtree implements Subtree {
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
+
+        // Update the timestamp of this bucket
         currentBucket.setUpdateTime(timestamp);
+
         // Keep track of where on the path we are
-        int i = 1;
+        int bucketLevel = 1;
         for (Boolean right : pathDirection) {
             // Determine whether the path is turning left or right from current bucket
             if (right) {
-                TaoLogger.logForce("Trying to init right child of node at level " + (i-1));
-                TaoLogger.logForce("The timestamp of this bucket i'm adding is " + path.getBucket(i).getUpdateTime());
+                TaoLogger.logDebug("Trying to init right child of node at level " + (bucketLevel-1));
+                TaoLogger.logDebug("The timestamp of this bucket i'm adding is " + path.getBucket(bucketLevel).getUpdateTime());
+
                 // Attempt to initialize right bucket
-                added = currentBucket.setRight(path.getBucket(i), i);
+                added = currentBucket.setRight(path.getBucket(bucketLevel), bucketLevel);
                 currentBucket.getRight().setUpdateTime(timestamp);
 
                 // If we initialized the child, we should add the blocks to the block map
                 if (added) {
-                    List<Block> blocksToAdd = currentBucket.getRight().getFilledBlocks();
-                    for (Block b : blocksToAdd) {
-                        TaoLogger.logForce("Adding blockID " + b.getBlockID());
+                    for (Block b : currentBucket.getRight().getFilledBlocks()) {
+                        TaoLogger.logDebug("Adding blockID " + b.getBlockID());
                         mBlockMap.put(b.getBlockID(), currentBucket.getRight());
                     }
                 }
 
                 for (Block b : currentBucket.getRight().getBlocks()) {
-                    TaoLogger.logForce("Not filled, but it says it has " + b.getBlockID());
+                    TaoLogger.logDebug("Not filled, but it says it has " + b.getBlockID());
                 }
 
                 // Move to next bucket
                 currentBucket = currentBucket.getRight();
             } else {
-                TaoLogger.logForce("Trying to init left child of node at level " + (i-1));
-                TaoLogger.logForce("The timestamp of this bucket i'm adding is " + path.getBucket(i).getUpdateTime());
+                TaoLogger.logDebug("Trying to init left child of node at level " + (bucketLevel-1));
+                TaoLogger.logDebug("The timestamp of this bucket i'm adding is " + path.getBucket(bucketLevel).getUpdateTime());
+
                 // Attempt to initialize left bucket
-                added = currentBucket.setLeft(path.getBucket(i), i);
+                added = currentBucket.setLeft(path.getBucket(bucketLevel), bucketLevel);
                 currentBucket.getLeft().setUpdateTime(timestamp);
 
                 // If we initialized the child, we should add the blocks to the block map
                 if (added) {
-                    List<Block> blocksToAdd = currentBucket.getLeft().getFilledBlocks();
-                    for (Block b : blocksToAdd) {
-                        TaoLogger.logForce("Adding blockID " + b.getBlockID());
+                    for (Block b : currentBucket.getLeft().getFilledBlocks()) {
+                        TaoLogger.logDebug("Adding blockID " + b.getBlockID());
                         mBlockMap.put(b.getBlockID(), currentBucket.getLeft());
                     }
                 }
 
                 for (Block b : currentBucket.getLeft().getBlocks()) {
-                    TaoLogger.logForce("Not filled, but it says it has " + b.getBlockID());
+                    TaoLogger.logDebug("Not filled, but it says it has " + b.getBlockID());
                 }
 
                 // Move to next bucket
                 currentBucket = currentBucket.getLeft();
             }
 
-            i++;
+            bucketLevel++;
         }
     }
 
     @Override
     public void addPath(Path path) {
-        TaoLogger.logForce("Going to add path " + path.getPathID() + " to subtree");
+        TaoLogger.logDebug("Going to add path " + path.getPathID() + " to subtree");
+
+        // Boolean to keep track of if a bucket was added to the current level
         boolean added = false;
+
         // Check if subtree is empty
         if (mRoot == null) {
             // If empty, initialize root with root of given path
             mRoot = new TaoSubtreeBucket(path.getBucket(0));
             added = true;
-        } else {
-            TaoLogger.log("Not going to init root");
         }
 
         // If we just added the root, we need to add the blocks to the block map
         if (added) {
-            List<Block> blocksToAdd = mRoot.getFilledBlocks();
-            for (Block b : blocksToAdd) {
-                TaoLogger.logForce("Adding blockID " + b.getBlockID());
+            for (Block b : mRoot.getFilledBlocks()) {
+                TaoLogger.logDebug("Adding blockID " + b.getBlockID());
                 mBlockMap.put(b.getBlockID(), mRoot);
             }
         }
@@ -191,58 +195,60 @@ public class TaoSubtree implements Subtree {
         SubtreeBucket currentBucket = mRoot;
 
         // Keep track of where on the path we are
-        int i = 1;
+        int bucketLevel = 1;
         for (Boolean right : pathDirection) {
             // Determine whether the path is turning left or right from current bucket
             if (right) {
-                TaoLogger.logForce("Trying to init right child of node at level " + (i-1));
+                TaoLogger.logDebug("Trying to init right child of node at level " + (bucketLevel-1));
+                TaoLogger.logDebug("The timestamp of this bucket i'm adding is " + path.getBucket(bucketLevel).getUpdateTime());
+
                 // Attempt to initialize right bucket
-                added = currentBucket.setRight(path.getBucket(i), i);
+                added = currentBucket.setRight(path.getBucket(bucketLevel), bucketLevel);
 
                 // If we initialized the child, we should add the blocks to the block map
                 if (added) {
-                    List<Block> blocksToAdd = currentBucket.getRight().getFilledBlocks();
-                    for (Block b : blocksToAdd) {
-                        TaoLogger.logForce("Adding blockID " + b.getBlockID());
+                    for (Block b : currentBucket.getRight().getFilledBlocks()) {
+                        TaoLogger.logDebug("Adding blockID " + b.getBlockID());
                         mBlockMap.put(b.getBlockID(), currentBucket.getRight());
                     }
                 }
 
                 for (Block b : currentBucket.getRight().getBlocks()) {
-                    TaoLogger.logForce("Not filled, but it says it has " + b.getBlockID());
+                    TaoLogger.logDebug("Not filled, but it says it has " + b.getBlockID());
                 }
 
                 // Move to next bucket
                 currentBucket = currentBucket.getRight();
             } else {
-                TaoLogger.logForce("Trying to init left child of node at level " + (i-1));
+                TaoLogger.logDebug("Trying to init left child of node at level " + (bucketLevel-1));
+                TaoLogger.logDebug("The timestamp of this bucket i'm adding is " + path.getBucket(bucketLevel).getUpdateTime());
+
                 // Attempt to initialize left bucket
-                added = currentBucket.setLeft(path.getBucket(i), i);
+                added = currentBucket.setLeft(path.getBucket(bucketLevel), bucketLevel);
 
                 // If we initialized the child, we should add the blocks to the block map
                 if (added) {
-                    List<Block> blocksToAdd = currentBucket.getLeft().getFilledBlocks();
-                    for (Block b : blocksToAdd) {
-                        TaoLogger.logForce("Adding blockID " + b.getBlockID());
+                    for (Block b : currentBucket.getLeft().getFilledBlocks()) {
+                        TaoLogger.logDebug("Adding blockID " + b.getBlockID());
                         mBlockMap.put(b.getBlockID(), currentBucket.getLeft());
                     }
                 }
 
                 for (Block b : currentBucket.getLeft().getBlocks()) {
-                    TaoLogger.logForce("Not filled, but it says it has " + b.getBlockID());
+                    TaoLogger.logDebug("Not filled, but it says it has " + b.getBlockID());
                 }
 
                 // Move to next bucket
                 currentBucket = currentBucket.getLeft();
             }
 
-            i++;
+            bucketLevel++;
         }
     }
 
     @Override
     public Path getPath(long pathID) {
-        TaoLogger.logForce("TaoSubtree getPath was called for pathID " + pathID);
+        TaoLogger.logDebug("TaoSubtree getPath was called for pathID " + pathID);
         // Create path and insert the root of tree
         Path returnPath = new TaoPath(pathID);
         returnPath.addBucket(mRoot);
@@ -252,16 +258,16 @@ public class TaoSubtree implements Subtree {
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
-        //printSubtree();
+
         int l = 0;
-        TaoLogger.logForce("Got level " + l);
+        TaoLogger.logDebug("Got level " + l);
         for (Boolean right : pathDirection) {
             l++;
-            TaoLogger.logForce("Getting level " + l);
+            TaoLogger.logDebug("Getting level " + l);
             // Get either the right or left child depending on the path
             currentBucket = right ? currentBucket.getRight() : currentBucket.getLeft();
             if (currentBucket == null) {
-                TaoLogger.logForce("Returning null for pathid " + pathID);
+                TaoLogger.logDebug("Returning null for pathid " + pathID);
                 return null;
             }
 
@@ -275,7 +281,8 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public Path getCopyOfPath(long pathID) {
-        TaoLogger.log("TaoSubtree getPath was called for pathID " + pathID);
+        TaoLogger.logDebug("TaoSubtree getPath was called for pathID " + pathID);
+
         // Create path and insert the root of tree
         Path returnPath = new TaoPath(pathID);
         returnPath.addBucket(mRoot);
@@ -285,12 +292,12 @@ public class TaoSubtree implements Subtree {
 
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
-        printSubtree();
+
         int l = 0;
-        TaoLogger.log("Got level " + l);
+        TaoLogger.logDebug("Got level " + l);
         for (Boolean right : pathDirection) {
             l++;
-            TaoLogger.log("Getting level " + l);
+            TaoLogger.logDebug("Getting level " + l);
             // Get either the right or left child depending on the path
             currentBucket = right ? currentBucket.getRight() : currentBucket.getLeft();
             if (currentBucket == null) {
@@ -331,7 +338,7 @@ public class TaoSubtree implements Subtree {
     public long deleteChild(SubtreeBucket bucket, long pathID, boolean[] directions, int level, long minTime, Set<Long> pathReqMultiSet) {
         // Check if we are at a leaf node
         if (level >= directions.length) {
-            TaoLogger.log("Returning because level >= directions.length, and level is " + level);
+            TaoLogger.logDebug("Returning because level >= directions.length, and level is " + level);
             return bucket.getUpdateTime();
         }
 
@@ -340,7 +347,7 @@ public class TaoSubtree implements Subtree {
 
         // If this is a leaf node, return
         if (child == null) {
-            TaoLogger.log("Returning because child is null");
+            TaoLogger.logDebug("Returning because child is null");
             return bucket.getUpdateTime();
         }
 
@@ -348,7 +355,6 @@ public class TaoSubtree implements Subtree {
         level++;
 
         // Save current level
-        // TODO: better name. currentLevel corresponds to being one level above the level that will potentially be deleted
         int currentLevel = level;
         int parentLevel = currentLevel - 1;
 
@@ -356,37 +362,30 @@ public class TaoSubtree implements Subtree {
         long timestamp = deleteChild(child, pathID, directions, level, minTime, pathReqMultiSet);
 
         // Check if we should delete the child
-        TaoLogger.logForce("The current parent level is " + parentLevel + " and the lastLevelToSave is " + lastLevelToSave);
+        TaoLogger.logDebug("The current parent level is " + parentLevel + " and the lastLevelToSave is " + lastLevelToSave);
 
-        child.print();
-
-        // Lock child bucket so no one can read/write to it
-       // child.lockBucket();
-
-        // TODO: Why did I need it to be < instead of <= again?
-        if (timestamp <= minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet) && currentLevel > lastLevelToSave) {
-            TaoLogger.logForce("Deleting because " + timestamp + " < " + minTime);
+        // Check if we should delete child
+        if (timestamp < minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet) && currentLevel > lastLevelToSave) {
+            TaoLogger.logDebug("Deleting because " + timestamp + " < " + minTime);
             // We should delete child, check if it was the right or left child
             if (directions[parentLevel]) {
-                TaoLogger.logForce("Going to delete the right child for path " + pathID + " at level " + parentLevel);
+                TaoLogger.logDebug("Going to delete the right child for path " + pathID + " at level " + parentLevel);
                 removeBucketMapping(child);
                 bucket.setRight(null, currentLevel);
             } else {
-                TaoLogger.logForce("Going to delete the left child for path " + pathID + " at level " + parentLevel);
+                TaoLogger.logDebug("Going to delete the left child for path " + pathID + " at level " + parentLevel);
                 removeBucketMapping(child);
                 bucket.setLeft(null, currentLevel);
             }
         } else {
-            TaoLogger.logForce("Not going to delete the node at level " + currentLevel + " because...");
+            TaoLogger.logDebug("Not going to delete the node at level " + currentLevel + " because...");
             if (timestamp > minTime) {
-                TaoLogger.logForce("Timestamp is greater than " + minTime);
+                TaoLogger.logDebug("Timestamp is greater than " + minTime);
             }
             if (isBucketInSet(pathID, currentLevel, pathReqMultiSet)) {
-                TaoLogger.logForce("Bucket is in set");
+                TaoLogger.logDebug("Bucket is in set");
             }
         }
-
-       // child.unlockBucket();
 
         // Return timestamp of this bucket
         return bucket.getUpdateTime();
@@ -411,11 +410,10 @@ public class TaoSubtree implements Subtree {
 
     @Override
     public void deleteNodes(long pathID, long minTime, Set<Long> pathReqMultiSet) {
-        // TODO: need locks?
-        TaoLogger.logForce("Doing a delete on pathID: " + pathID + " and min time " + minTime);
-        TaoLogger.log("skeddit set is ");
+        TaoLogger.logInfo("Doing a delete on pathID: " + pathID + " and min time " + minTime);
+        TaoLogger.logDebug("skeddit set is ");
         for (Long l : pathReqMultiSet) {
-            TaoLogger.log("path: " + l);
+            TaoLogger.logDebug("path: " + l);
         }
 
         // Check if subtree is empty
@@ -427,26 +425,18 @@ public class TaoSubtree implements Subtree {
         // Get the directions for this path
         boolean[] pathDirection = Utility.getPathFromPID(pathID, TaoConfigs.TREE_HEIGHT);
 
+        // Try to delete all descendants
+        deleteChild(mRoot, pathID, pathDirection, 0, minTime, pathReqMultiSet);
 
-        //Path pathToDelete = getPath(pathID);
-        // Might have been deleted already
-       // if (pathToDelete != null) {
-         //   pathToDelete.lockPath();
-            // Try to delete all descendants
-            deleteChild(mRoot, pathID, pathDirection, 0, minTime, pathReqMultiSet);
-
-            // Check if we can delete root
-            // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
-            // thus it should be okay to set mRoot to null
-            if (mRoot.getUpdateTime() <= minTime && !pathReqMultiSet.contains(pathID) && 0 > lastLevelToSave) {
-                TaoLogger.log("** Deleting the root node too");
-                mRoot = null;
-            } else {
-                TaoLogger.log("** Not deleting root node");
-            }
-
-          //  pathToDelete.unlockPath();
-      //  }
+        // Check if we can delete root
+        // NOTE: If root has a timestamp less than minTime, the the entire subtree should be able to be deleted, and
+        // thus it should be okay to set mRoot to null
+        if (mRoot.getUpdateTime() <= minTime && !pathReqMultiSet.contains(pathID) && 0 > lastLevelToSave) {
+            TaoLogger.logDebug("** Deleting the root node too");
+            mRoot = null;
+        } else {
+            TaoLogger.logDebug("** Not deleting root node");
+        }
     }
 
     @Override
@@ -481,11 +471,14 @@ public class TaoSubtree implements Subtree {
 
         // Remove all block mappings to this bucket and clear the bucket
         removeBucketMapping(currentBucket);
+
+        // Clear bucket of blocks
         currentBucket.clearBucket();
     }
 
     @Override
     public void printSubtree() {
+        // Print tree
         Queue<SubtreeBucket> q = new ConcurrentLinkedQueue<>();
 
         if (mRoot != null) {
@@ -505,6 +498,5 @@ public class TaoSubtree implements Subtree {
 
             b.print();
         }
-
     }
 }

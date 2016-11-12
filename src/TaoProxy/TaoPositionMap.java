@@ -25,19 +25,15 @@ public class TaoPositionMap implements PositionMap {
     }
 
     /**
-     * @brief
+     * @brief A constructor that will assign each leaf to one of the servers in storageServerAddresses
      * @param storageServerAddresses
-     * TODO: Currently number of servers have to be a power of 2
      */
     public TaoPositionMap(List<InetSocketAddress> storageServerAddresses) {
         mPositions = new ConcurrentHashMap<>();
         mPartitionAddressMap = new ConcurrentHashMap<>();
-        int numServers = storageServerAddresses.size();
 
-        // Check if power of two
-        if ((numServers & -numServers) != numServers) {
-            // TODO: only use a power of two for the servers, throw error?
-        }
+        // Save number of servers
+        int numServers = storageServerAddresses.size();
 
         // Get the number of leaves each server will contain
         int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
@@ -47,11 +43,14 @@ public class TaoPositionMap implements PositionMap {
         int currentServer = 0;
         for (int i = 0; i < numLeaves; i += leavesPerServer) {
             long currentServerLeaves = i;
+
+            // Add to the mPartitionAddressMap
             while (currentServerLeaves < i + leavesPerServer) {
-                TaoLogger.log("skeddit assigning " + currentServerLeaves + " to server " + storageServerAddresses.get(currentServer).getHostName());
                 mPartitionAddressMap.put(currentServerLeaves, storageServerAddresses.get(currentServer));
                 currentServerLeaves++;
             }
+
+            // Increment the current server
             currentServer++;
         }
     }

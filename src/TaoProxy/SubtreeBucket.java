@@ -29,5 +29,8 @@ public interface SubtreeBucket extends Bucket {
      */
     SubtreeBucket getLeft();
 
+    /**
+     * @brief Used for debugging, prints contents of bucket to screen
+     */
     void print();
 }

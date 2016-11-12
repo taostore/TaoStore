@@ -14,8 +14,6 @@ public interface Bucket {
      */
     boolean addBlock(Block block, long time);
 
-    boolean removeBlock(long blockID);
-
     /**
      * @brief Method to modify the data of a block within this bucket
      * @param blockID
@@ -49,6 +47,10 @@ public interface Bucket {
      */
     long getUpdateTime();
 
+    /**
+     * @brief Mutator method to set the last time this bucket was updated
+     * @param timestamp
+     */
     void setUpdateTime(long timestamp);
 
     /**

@@ -66,7 +66,7 @@ public class TaoServerTest {
         // Remove the id bytes since we are passing this straight into the writePath function
         serializedPath = Arrays.copyOfRange(serializedPath, 8, serializedPath.length);
         // Write path to server
-        server.writePath(pathID, serializedPath);
+        server.writePath(pathID, serializedPath, 0);
 
         // Read path back from server
         byte[] read = server.readPath(pathID);

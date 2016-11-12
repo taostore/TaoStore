@@ -9,6 +9,8 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
     // Left and right child buckets
     private SubtreeBucket mLeft;
     private SubtreeBucket mRight;
+
+    // The level this bucket resides, used for debugging
     private int mLevel;
 
     /**
@@ -21,6 +23,10 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
         mLevel = -1;
     }
 
+    /**
+     * @brief Constructor that takes in a level
+     * @param level
+     */
     public TaoSubtreeBucket(int level) {
         super();
         mLeft = null;
@@ -52,22 +58,21 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
         mLevel = level;
     }
 
-
     @Override
     public boolean setRight(Bucket b, int level) {
         if (mRight == null) {
-            TaoLogger.logForce("Subtree bucket is null");
+            TaoLogger.logDebug("Subtree bucket is null");
             if (b != null) {
-                TaoLogger.log("Subtree bucket is init with b");
+                TaoLogger.logDebug("Subtree bucket is init with b");
                 mRight = new TaoSubtreeBucket(b, level);
                 return true;
             } else {
-                TaoLogger.log("Subtree bucket is init with null");
+                TaoLogger.logDebug("Subtree bucket is init with null");
                 mRight = null;
                 return true;
             }
         } else {
-            TaoLogger.logForce("Subtree bucket is not null");
+            TaoLogger.logDebug("Subtree bucket is not null");
             if (b == null) {
                 mRight = null;
                 return true;
@@ -79,18 +84,18 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
     @Override
     public boolean setLeft(Bucket b, int level) {
         if (mLeft == null) {
-            TaoLogger.logForce("Subtree bucket is null");
+            TaoLogger.logDebug("Subtree bucket is null");
             if (b != null) {
-                TaoLogger.log("Subtree bucket is init with b");
+                TaoLogger.logDebug("Subtree bucket is init with b");
                 mLeft = new TaoSubtreeBucket(b, level);
                 return true;
             } else {
-                TaoLogger.log("Subtree bucket is init with null");
+                TaoLogger.logDebug("Subtree bucket is init with null");
                 mLeft = null;
                 return true;
             }
         } else {
-            TaoLogger.logForce("Subtree bucket is not null");
+            TaoLogger.logDebug("Subtree bucket is not null");
             if (b == null) {
                 mLeft = null;
                 return true;
@@ -112,12 +117,12 @@ public class TaoSubtreeBucket extends TaoBucket implements SubtreeBucket {
     @Override
     public void print() {
         List<Block> bs = getFilledBlocks();
-        TaoLogger.logForce("Bucket start --------------------");
-        TaoLogger.logForce("At level " + mLevel);
-        TaoLogger.logForce("Last updated at " + getUpdateTime());
+        TaoLogger.logDebug("Bucket start --------------------");
+        TaoLogger.logDebug("At level " + mLevel);
+        TaoLogger.logDebug("Last updated at " + getUpdateTime());
         for (int i = 0; i < bs.size(); i++) {
-            TaoLogger.logForce("@@@ BlockID: " + bs.get(i).getBlockID());
+            TaoLogger.logDebug("@@@ BlockID: " + bs.get(i).getBlockID());
         }
-        TaoLogger.logForce("Bucket end --------------------\n");
+        TaoLogger.logDebug("Bucket end --------------------\n");
     }
 }

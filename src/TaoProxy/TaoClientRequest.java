@@ -38,7 +38,7 @@ public class TaoClientRequest implements ClientRequest {
         mType = -1;
         mData = new byte[TaoConfigs.BLOCK_SIZE];
         mRequestID = -1;
-        mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
+        mClientAddress = null;
     }
 
     @Override
@@ -60,8 +60,7 @@ public class TaoClientRequest implements ClientRequest {
         int port = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
         // Cache to avoid having to recreate InetSocketAddress object
-        TaoLogger.logForce("The hostname we got is " + hostname);
-        mClientAddress = ClientAddressCache.getFromCache(hostname, Integer.toString(port));  //new InetSocketAddress(hostname, port);
+        mClientAddress = ClientAddressCache.getFromCache(hostname, Integer.toString(port));
     }
 
     @Override

@@ -1,7 +1,5 @@
 package TaoProxy;
 
-import com.google.common.collect.Multiset;
-
 import java.util.Set;
 
 public interface Subtree {
@@ -54,5 +52,8 @@ public interface Subtree {
      */
     void clearPath(long pathID);
 
+    /**
+     * @brief Used for debugging, prints subtree contents
+     */
     void printSubtree();
 }
