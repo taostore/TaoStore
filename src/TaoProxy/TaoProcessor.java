@@ -342,10 +342,10 @@ public class TaoProcessor implements Processor {
                                             response.setPathID(absoluteFinalPathID);
 
                                             // Mark the channel as free
-                                          //  synchronized (channelToServer) {
-                                         //       serverTakenMap.replace(targetServer, false);
-                                           //     channelToServer.notifyAll();
-                                           // }
+                                            synchronized (channelToServer) {
+                                                serverTakenMap.replace(targetServer, false);
+                                                channelToServer.notifyAll();
+                                            }
 
                                             // Send response to proxy
                                             Runnable serializeProcedure = () -> mProxy.onReceiveResponse(req, response, fakeRead);
