@@ -34,7 +34,6 @@ public class BlockPathComparatorTest {
         Long[] answer = new Long[] {0L, 1L, 2L, 4L, 8L};
         int i = 0;
         while (!blockHeap.isEmpty()) {
-            System.out.println(answer[i]);
             assertEquals((long) answer[i], blockHeap.poll().getBlockID());
             i++;
         }

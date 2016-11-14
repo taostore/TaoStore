@@ -7,20 +7,20 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Created by ajmagat on 6/3/16.
+ * @brief Configurations for TaoStore
  */
 public class TaoConfigs {
     // Name of the file each storage server will store information too
     public static final String ORAM_FILE = "oram.txt";
 
     // Amount of threads to be used for asynchronous I/O
-    public static final int PROXY_THREAD_COUNT = 100;
+    public static final int PROXY_THREAD_COUNT = 25;
 
     // The writeback threshold for the proxy
-    public static int WRITE_BACK_THRESHOLD = 40000;
+    public static int WRITE_BACK_THRESHOLD = 40;
 
     // Port used by proxy
-    public static String PROXY_HOSTNAME = "10.138.0.2";
+    public static String PROXY_HOSTNAME = "10.138.0.6";
     public static int PROXY_PORT = 12339;
 
     // The storage size of each block in bytes
@@ -65,10 +65,13 @@ public class TaoConfigs {
 
     // The list of storage servers to be used by proxy
     public static List<InetSocketAddress> PARTITION_SERVERS =
-            Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.3", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.5", SERVER_PORT));
+            Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT));//,
+//                    new InetSocketAddress("10.128.0.3", SERVER_PORT),
+//                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
+//                    new InetSocketAddress("10.128.0.5", SERVER_PORT));
+
+    // Used for testing
+    public static List<InetSocketAddress> TEST_PARTITION_SERVERS = Arrays.asList(new InetSocketAddress("localhost", SERVER_PORT));
 
     /**
      * @brief Static method to initialize constants
@@ -108,7 +111,7 @@ public class TaoConfigs {
     public static void prepareForDemo() {
         PROXY_HOSTNAME = "localhost";
         PARTITION_SERVERS = Arrays.asList(new InetSocketAddress("localhost", SERVER_PORT));
-        WRITE_BACK_THRESHOLD = 1;
+      //  WRITE_BACK_THRESHOLD = 1;
     }
 
     /**

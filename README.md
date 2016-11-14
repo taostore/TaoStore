@@ -1,18 +1,11 @@
-# TaoStore
+TaoStore
+========
 
-TODO:
-# Encrypt message from client to proxy?
-Still need to clear the subtree buckets of the top of the subtree when under multiple partitioning (?)
-
-Test writeback with storage partition: possibly done
-Client out of order return problem
-Pad the passed messages to always be same length
-1024 connections problem
-Write more unit and integration tests
-
-Usage:
-
-Performance Disclaimers:
-For optimal performance, "warm up" system beforehand by doing a healthy amount of operations before measuring throughput, response times, etc.
-Reasons for this mainly involve initializing several data structures on the first few operations, as well as JIT compiling Java byte code into
-native code
+**Usage:**
+* All configurations can be found in *Configuration/TaoConfigs.java*. In this file you can set the IPs/ports for the proxy and servers, the writeback threshold, etc.
+* Three jars will need to be built, one for clients, one for the proxy, and one for servers. 
+  * The client jar takes in no arguments
+  * The proxy jar takes in the total size of the system in bytes
+  * The server jar takes in the total size of the system in bytes
+* For optimal performance, "warm up" system beforehand by doing a healthy amount of operations before measuring throughput, response times, etc.
+  * Reasons for this mainly involve needing to initialize several data structures, as well as JIT compiling Java byte code into native code

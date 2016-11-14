@@ -49,6 +49,9 @@ public class TaoClient implements Client {
     // Port this client will use
     public static int CLIENT_PORT = 12337;
 
+    // Used for measuring response time
+    public static List<Long> mResponseTimes;
+
     /**
      * @brief Default constructor
      */
@@ -59,7 +62,6 @@ public class TaoClient implements Client {
             mClientAddress = new InetSocketAddress(currentIP, CLIENT_PORT);
 
             // Initialize proxy address
-            TaoLogger.logForce("I think the hostname is " + TaoConfigs.PROXY_HOSTNAME);
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
 
             // Create message creator
@@ -78,6 +80,9 @@ public class TaoClient implements Client {
 
             // Create executor
             mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Initialize list
+            mResponseTimes = new ArrayList<>();
 
             // Create listener for proxy responses, wait until it is finished initializing
             Object listenerWait = new Object();
@@ -101,7 +106,6 @@ public class TaoClient implements Client {
             mClientAddress = new InetSocketAddress(currentIP, CLIENT_PORT);
 
             // Initialize proxy address
-            TaoLogger.logForce("I think the hostname is " + TaoConfigs.PROXY_HOSTNAME);
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
 
             // Create message creator
@@ -299,7 +303,6 @@ public class TaoClient implements Client {
      */
     private void serveProxy(AsynchronousSocketChannel channel) {
         try {
-            TaoLogger.logError("\n Client has connection from proxy \n");
             // Create a ByteBuffer to read in message type
             ByteBuffer typeByteBuffer = MessageUtility.createTypeReceiveBuffer();
 
@@ -347,7 +350,7 @@ public class TaoClient implements Client {
                                 // Notify thread waiting for this response id
                                 synchronized (clientAnswer) {
                                     clientAnswer.notifyAll();
-                                    TaoLogger.logInfo("\n\nGot response to request #" + clientAnswer.getClientRequestID());
+                                    TaoLogger.logInfo("Got response to request #" + clientAnswer.getClientRequestID());
                                     mResponseWaitMap.remove(clientAnswer.getClientRequestID());
                                     serveProxy(channel);
                                 }
@@ -450,6 +453,7 @@ public class TaoClient implements Client {
             byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
             Arrays.fill(dataToWrite, (byte) blockID);
             listOfBytes.add(dataToWrite);
+
             writeStatus = client.write(blockID, dataToWrite);
 
             if (!writeStatus) {
@@ -463,15 +467,20 @@ public class TaoClient implements Client {
         int readOrWrite;
         int targetBlock;
         byte[] z;
-        TaoLogger.logForce("Going to start load test");
 
+        TaoLogger.logForce("Going to start load test");
+        long startTime = System.currentTimeMillis();
         for (int i = 0; i < 1000; i++) {
             readOrWrite = r.nextInt(2);
             targetBlock = r.nextInt(numDataItems) + 1;
 
             if (readOrWrite == 0) {
                 TaoLogger.logInfo("Doing read request #" + mRequestID);
+
+                // Send read and keep track of response time
+                long start = System.currentTimeMillis();
                 z = client.read(targetBlock);
+                mResponseTimes.add(System.currentTimeMillis() - start);
 
                 if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
                     TaoLogger.logError("Read failed for block " + targetBlock);
@@ -479,7 +488,11 @@ public class TaoClient implements Client {
                 }
             } else {
                 TaoLogger.logInfo("Doing write request #" + mRequestID);
+
+                // Send write and keep track of response time
+                long start = System.currentTimeMillis();
                 writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
+                mResponseTimes.add(System.currentTimeMillis() - start);
 
                 if (!writeStatus) {
                     TaoLogger.logError("Write failed for block " + targetBlock);
@@ -487,7 +500,18 @@ public class TaoClient implements Client {
                 }
             }
         }
+        long endTime = System.currentTimeMillis();
         TaoLogger.logForce("Ending load test");
+
+        // Get average response time over 1000 operations
+        long total = 0;
+        for (Long l : mResponseTimes) {
+            total += l;
+        }
+        float average = total / ((float) mResponseTimes.size());
+
+        TaoLogger.logForce("Average response time was " + average + " ms");
+        TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
     }
 
     public static void main(String[] args) {
@@ -497,7 +521,7 @@ public class TaoClient implements Client {
             long systemSize = 246420;
             TaoClient client = new TaoClient();
 
-           // loadTest(client);
+            loadTest(client);
 
             Scanner reader = new Scanner(System.in);
             while (true) {

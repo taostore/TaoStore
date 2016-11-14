@@ -67,7 +67,7 @@ public class TaoProxy implements Proxy {
     public TaoProxy(long minServerSize, MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree) {
         try {
             // For trace purposes
-            TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
+            TaoLogger.logLevel = TaoLogger.LOG_OFF;
 
             // Initialize needed constants
             TaoConfigs.initConfiguration(minServerSize);
@@ -385,8 +385,11 @@ public class TaoProxy implements Proxy {
             System.exit(0);
         }
 
+        // Convert megabytes to bytes
+        long inBytes = Long.parseLong(args[0]) * 1024 * 1024;
+
         // Create proxy and run
-        TaoProxy proxy = new TaoProxy(Long.parseLong(args[0]), new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree());
+        TaoProxy proxy = new TaoProxy(inBytes, new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree());
 
         // Initialize and run server
         proxy.initializeServer();

@@ -9,6 +9,7 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Bytes;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
@@ -89,6 +90,8 @@ public class TaoProcessor implements Processor {
     // This boolean will indicate if the channel for that storage server (for this client) is being used for I/O
     protected Map<InetSocketAddress, Map<InetSocketAddress, Boolean>> mAsyncProxyToServerTakenMap;
 
+    // An InetSocketAddress that the proxy will use on writebacks
+    protected InetSocketAddress mSelfAddress;
 
     /**
      * @brief Constructor
@@ -155,6 +158,11 @@ public class TaoProcessor implements Processor {
             // Initialize maps
             mProxyToServerChannelMap = new ConcurrentHashMap<>();
             mAsyncProxyToServerTakenMap = new ConcurrentHashMap<>();
+
+            // Make an InetSocketAddress for proxy and then make connections for proxy to use for writeback
+            String currentIP = InetAddress.getLocalHost().getHostAddress();
+            mSelfAddress = new InetSocketAddress(currentIP, TaoConfigs.PROXY_PORT + 1);
+            makeInitialConnections(mSelfAddress);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -265,6 +273,8 @@ public class TaoProcessor implements Processor {
             byte[] requestData = proxyRequest.serialize();
 
             // Claim the channel
+            // TODO: AsynchronousSocketChannel can read and write concurrently, so we can make the following code
+            // TODO: more efficient
             synchronized (channelToServer) {
                 // Check to see if the channel is being used. If it is, wait
                 while (serverTakenMap.get(targetServer)) {
@@ -292,17 +302,17 @@ public class TaoProcessor implements Processor {
                         // Asynchronously read response type and size from server
                         ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
 
-                        TaoLogger.logForce("Waiting to receive header from server");
-
+                       // TaoLogger.logForce("Waiting to receive header from server");
                         channelToServer.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
                             @Override
                             public void completed(Integer result, Void attachment) {
-                                TaoLogger.logForce("Done receiving header server");
                                 // Make sure we read the entire message
                                 while (messageTypeAndSize.remaining() > 0) {
                                     channelToServer.read(messageTypeAndSize, null, this);
                                     return;
                                 }
+
+                                //TaoLogger.logForce("Done receiving header server");
 
                                 // Flip the byte buffer for reading
                                 messageTypeAndSize.flip();
@@ -314,7 +324,7 @@ public class TaoProcessor implements Processor {
 
                                 // Asynchronously read response from server
                                 ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
-                                TaoLogger.logForce("Waiting to receive path from server");
+                               // TaoLogger.logForce("Waiting to receive path from server");
                                 channelToServer.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
                                     @Override
                                     public void completed(Integer result, Void attachment) {
@@ -324,7 +334,7 @@ public class TaoProcessor implements Processor {
                                             return;
                                         }
 
-                                        TaoLogger.logForce("Received path from server");
+                                      //  TaoLogger.logForce("Received path from server");
                                         // Flip the byte buffer for reading
                                         pathInBytes.flip();
 
@@ -538,7 +548,6 @@ public class TaoProcessor implements Processor {
      * @brief Method to get data from a block with the given blockID
      * @param blockID
      * @return the data from block
-     * TODO: Account for error
      */
     public byte[] getDataFromBlock(long blockID) {
         TaoLogger.logDebug("Trying to get data for blockID " + blockID);
@@ -816,7 +825,8 @@ public class TaoProcessor implements Processor {
                 byte[] dataToWrite = null;
                 int pathSize = 0;
 
-                // TODO: Should this be a snapshot writeback?
+                // TODO: Should this be a snapshot writeback? Good enough in most cases as the bytes are encrypted
+                // TODO: quickly after retrieving path, but ideally it should be
                 for (int i = 0; i < writebackPaths.size(); i++) {
                     // Get path
                     Path p = mSubtree.getPath(writebackPaths.get(i));
@@ -851,409 +861,149 @@ public class TaoProcessor implements Processor {
 
                 // Serialize the request
                 byte[] encryptedWriteBackPaths = writebackRequest.serialize();
-                if (encryptedWriteBackPaths == null) {
-                    TaoLogger.logDebug("encryptedWriteBackPaths is null");
-                } else {
-                    TaoLogger.logDebug("encryptedWriteBackPaths is not null");
-                }
 
                 // Create and run server
                 Runnable writebackRunnable = () -> {
                     try {
                         TaoLogger.logDebug("Going to do writeback for server " + serverIndexFinal);
-                        AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
-                        Future connectionFuture = channel.connect(serverAddr);
-                        connectionFuture.get();
 
-                        // First we send the message type to the server along with the size of the message
-                        ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
-                        Future sendHeader;
-                        while (messageType.remaining() > 0) {
-                            sendHeader = channel.write(messageType);
-                            sendHeader.get();
-                        }
-                        messageType = null;
+                        // Get writeback channel map and then get the correct channel
+                        Map<InetSocketAddress, AsynchronousSocketChannel> writebackChannelMap = mProxyToServerChannelMap.get(mSelfAddress);
+                        AsynchronousSocketChannel channel =writebackChannelMap.get(serverAddr);
 
-                        // Send writeback paths
-                        ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
-                        Future sendMessage;
-                        while (message.remaining() > 0) {
-                            sendMessage = channel.write(message);
-                            sendMessage.get();
-                        }
-                        message = null;
-                        TaoLogger.logDebug("Sent info, now waiting to listen for server " + serverIndexFinal);
+                        // Get the serverTakenMap for proxy, which will be used as a lock for the above channel
+                        // in the case that another writeback occurs while this one is ongoing
+                        Map<InetSocketAddress, Boolean> serverTakenMap = mAsyncProxyToServerTakenMap.get(mSelfAddress);
 
-                        // Listen for server response
-                        ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
-                        channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
-                            @Override
-                            public void completed(Integer result, Void attachment) {
-                                // Flip the byte buffer for reading
-                                messageTypeAndSize.flip();
+                        synchronized (channel) {
+                            // Check to see if the channel is being used. If it is, wait
+                            while (serverTakenMap.get(serverAddr)) {
+                                channel.wait();
+                            }
 
-                                // Parse the message type and size from server
-                                int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
-                                int messageType = typeAndLength[0];
-                                int messageLength = typeAndLength[1];
+                            // Mark the channel serving this server as taken so no other thread can use the channel while
+                            // channel is being used
+                            serverTakenMap.replace(serverAddr, true);
 
-                                // Determine behavior based on response
-                                if (messageType == MessageTypes.SERVER_RESPONSE) {
-                                    // Read the response
-                                    ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
-                                    channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
+                            // First we send the message type to the server along with the size of the message
+                            ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
+                            Future sendHeader;
+                            while (messageType.remaining() > 0) {
+                                sendHeader = channel.write(messageType);
+                                sendHeader.get();
+                            }
+                            messageType = null;
 
-                                        @Override
-                                        public void completed(Integer result, Void attachment) {
-                                            // Make sure we read the entire message
-                                            while (messageResponse.remaining() > 0) {
-                                                channel.read(messageResponse);
-                                            }
+                            // Send writeback paths
+                            ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
+                            Future sendMessage;
+                            while (message.remaining() > 0) {
+                                sendMessage = channel.write(message);
+                                sendMessage.get();
+                            }
+                            message = null;
+                            TaoLogger.logDebug("Sent info, now waiting to listen for server " + serverIndexFinal);
 
-                                            // Flip byte buffer for reading
-                                            messageResponse.flip();
+                            // Listen for server response
+                            ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
+                            channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
+                                @Override
+                                public void completed(Integer result, Void attachment) {
+                                    // Flip the byte buffer for reading
+                                    messageTypeAndSize.flip();
 
-                                            // Get data from response
-                                            byte[] serialized = new byte[messageLength];
-                                            messageResponse.get(serialized);
+                                    // Parse the message type and size from server
+                                    int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
+                                    int messageType = typeAndLength[0];
+                                    int messageLength = typeAndLength[1];
 
-                                            // Create ServerResponse based on data
-                                            ServerResponse response = mMessageCreator.createServerResponse();
-                                            response.initFromSerialized(serialized);
+                                    // Determine behavior based on response
+                                    if (messageType == MessageTypes.SERVER_RESPONSE) {
+                                        // Read the response
+                                        ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
+                                        channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
 
-                                            // Check to see if the write succeeded or not
-                                            if (response.getWriteStatus()) {
-                                                // Acquire return lock
-                                                synchronized (returnLock) {
-                                                    // Set that this server did return
-                                                    serverDidReturn[serverIndexFinal] = true;
-
-                                                    // Check if all the servers have returned
-                                                    boolean allReturn = true;
-                                                    for (int n = 0; n < serverDidReturn.length; n++) {
-                                                        if (! serverDidReturn[n]) {
-                                                            allReturn = false;
-                                                            break;
-                                                        }
-                                                    }
-
-                                                    // If all the servers have successfully responded, we can delete nodes from subtree
-                                                    if (allReturn) {
-                                                        // Iterate through every path that was written, check if there are any nodes
-                                                        // we can delete
-                                                        for (Long pathID : allWriteBackIDs) {
-                                                            // Upon response, delete all nodes in subtree whose timestamp
-                                                            // is <= timeStamp, and are not in mPathReqMultiSet
-                                                            // TODO: should pass in entire mPathReqMultiSet instead
-                                                            Set<Long> set = new HashSet<>();
-                                                            for (Long l : mPathReqMultiSet.elementSet()) {
-                                                                set.add(l);
-                                                            }
-                                                            mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
-                                                        }
-                                                    }
+                                            @Override
+                                            public void completed(Integer result, Void attachment) {
+                                                // Make sure we read the entire message
+                                                while (messageResponse.remaining() > 0) {
+                                                    channel.read(messageResponse);
                                                 }
-                                            } else {
-                                                // TODO: what happens on fail?
+
+                                                // Release the channel
+                                                synchronized (channel) {
+                                                    serverTakenMap.replace(serverAddr, false);
+                                                    channel.notifyAll();
+                                                }
+
+                                                // Flip byte buffer for reading
+                                                messageResponse.flip();
+
+                                                // Get data from response
+                                                byte[] serialized = new byte[messageLength];
+                                                messageResponse.get(serialized);
+
+                                                // Create ServerResponse based on data
+                                                ServerResponse response = mMessageCreator.createServerResponse();
+                                                response.initFromSerialized(serialized);
+
+                                                // Check to see if the write succeeded or not
+                                                if (response.getWriteStatus()) {
+                                                    // Acquire return lock
+                                                    synchronized (returnLock) {
+                                                        // Set that this server did return
+                                                        serverDidReturn[serverIndexFinal] = true;
+
+                                                        // Check if all the servers have returned
+                                                        boolean allReturn = true;
+                                                        for (int n = 0; n < serverDidReturn.length; n++) {
+                                                            if (!serverDidReturn[n]) {
+                                                                allReturn = false;
+                                                                break;
+                                                            }
+                                                        }
+
+                                                        // If all the servers have successfully responded, we can delete nodes from subtree
+                                                        if (allReturn) {
+                                                            // Iterate through every path that was written, check if there are any nodes
+                                                            // we can delete
+                                                            for (Long pathID : allWriteBackIDs) {
+                                                                // Upon response, delete all nodes in subtree whose timestamp
+                                                                // is <= timeStamp, and are not in mPathReqMultiSet
+                                                                // TODO: should pass in entire mPathReqMultiSet instead
+                                                                Set<Long> set = new HashSet<>();
+                                                                for (Long l : mPathReqMultiSet.elementSet()) {
+                                                                    set.add(l);
+                                                                }
+                                                                mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
+                                                            }
+                                                        }
+                                                    }
+                                                } else {
+                                                    // TODO: what happens on fail?
+                                                }
                                             }
-                                        }
 
-                                        @Override
-                                        public void failed(Throwable exc, Void attachment) {
-                                            // TODO: Implement?
-                                        }
-                                    });
+                                            @Override
+                                            public void failed(Throwable exc, Void attachment) {
+                                                // TODO: Implement?
+                                            }
+                                        });
+                                    }
                                 }
-                            }
 
-                            @Override
-                            public void failed(Throwable exc, Void attachment) {
-                                // TODO: Implement?
-                            }
-                        });
-
-//
-//
-//                        Future readHeader;
-//                        while (messageTypeAndSize.remaining() > 0) {
-//                            readHeader = channel.read(messageTypeAndSize);
-//                            readHeader.get();
-//                        }
-//
-//                        // Flip the byte buffer for reading
-//                        messageTypeAndSize.flip();
-//
-//                        // Parse the message type and size from server
-//                        int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
-//
-//                        int messageTypeInner = typeAndLength[0];
-//                        int messageLengthInner = typeAndLength[1];
-//                        messageTypeAndSize = null;
-//                        if (messageTypeInner == MessageTypes.SERVER_RESPONSE) {
-//                            // Read the response
-//                            ByteBuffer messageResponse = ByteBuffer.allocate(messageLengthInner);
-//                            Future readMessage;
-//                            while (messageResponse.remaining() > 0) {
-//                                readMessage = channel.read(messageResponse);
-//                                readMessage.get();
-//                            }
-//                            messageResponse.flip();
-//
-//                            byte[] serialized = new byte[messageLengthInner];
-//                            messageResponse.get(serialized);
-//                            messageResponse = null;
-//                            // Create ServerResponse based on data
-//                            ServerResponse response = mMessageCreator.createServerResponse();
-//                            response.initFromSerialized(serialized);
-//
-//                            // Check to see if the write succeeded or not
-//                            if (response.getWriteStatus()) {
-//                                // Acquire return lock
-//                                synchronized (returnLock) {
-//                                    // Set that this server did return
-//                                    serverDidReturn[serverIndexFinal] = true;
-//
-//                                    // Check if all the servers have returned
-//                                    boolean allReturn = true;
-//                                    for (int n = 0; n < serverDidReturn.length; n++) {
-//                                        if (! serverDidReturn[n]) {
-//                                            allReturn = false;
-//                                            break;
-//                                        }
-//                                    }
-//
-//                                    // If all the servers have successfully responded, we can delete nodes from subtree
-//                                    if (allReturn) {
-//                                        // Iterate through every path that was written, check if there are any nodes
-//                                        // we can delete
-//                                        for (Long pathID : allWriteBackIDs) {
-//                                            // Upon response, delete all nodes in subtree whose timestamp
-//                                            // is <= timeStamp, and are not in mPathReqMultiSet
-//                                            // TODO: check if shallow or deep copy
-//                                            Set<Long> set = new HashSet<>();
-//                                            for (Long l : mPathReqMultiSet.elementSet()) {
-//                                                set.add(l);
-//                                            }
-//                                            // mSubtree.printSubtree();
-//                                            mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
-//                                        }
-//
-//                                        TaoLogger.logForce("TREE AFTER WRITEBACK");
-//                                        mSubtree.printSubtree();
-//                                    }
-//                                }
-//                            } else {
-//                                // TODO: what happens on fail?
-//                            }
-//
-//                        }
+                                @Override
+                                public void failed(Throwable exc, Void attachment) {
+                                    // TODO: Implement?
+                                }
+                            });
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 };
                 new Thread(writebackRunnable).start();
             }
-
-
-
-//
-//
-//
-//            // Now we will send the writeback request to each server
-//            for (InetSocketAddress serverAddr : writebackMap.keySet()) {
-//                // Increment and save current server index
-//                serverIndex++;
-//                final int serverIndexFinal = serverIndex;
-//
-//                // Get the list of paths to be written for the current server
-//                List<Long> writebackPaths = writebackMap.get(serverAddr);
-//
-//                // Get all the encrypted path data
-//                byte[] dataToWrite = null;
-//                int pathSize = 0;
-//
-//                // TODO: Should this be a snapshot writeback?
-//                for (int i = 0; i < writebackPaths.size(); i++) {
-//                    // Get path
-//                    Path p = mSubtree.getPath(writebackPaths.get(i));
-//                    if (p != null) {
-//                        // Set the path to correspond to the relative leaf ID as present on the server to be written to
-//                        p.setPathID(mRelativeLeafMapper.get(p.getPathID()));
-//
-//                        // If this is the first path, don't need to concat the data
-//                        if (dataToWrite == null) {
-//                            dataToWrite = mCryptoUtil.encryptPath(p);
-//                            pathSize = dataToWrite.length;
-//                        } else {
-//                            dataToWrite = Bytes.concat(dataToWrite, mCryptoUtil.encryptPath(p));
-//                        }
-//                    }
-//                }
-//                TaoLogger.log("Going to do writeback");
-//
-//                if (dataToWrite == null) {
-//                    serverDidReturn[serverIndexFinal] = true;
-//                    continue;
-//                }
-//
-//                // Create the proxy write request
-//                ProxyRequest writebackRequest = mMessageCreator.createProxyRequest();
-//                writebackRequest.setType(MessageTypes.PROXY_WRITE_REQUEST);
-//                writebackRequest.setPathSize(pathSize);
-//                writebackRequest.setDataToWrite(dataToWrite);
-//
-//                // Serialize the request
-//                byte[] encryptedWriteBackPaths = writebackRequest.serialize();
-//                if (encryptedWriteBackPaths == null) {
-//                    TaoLogger.log("encryptedWriteBackPaths is null");
-//                } else {
-//                    TaoLogger.log("encryptedWriteBackPaths is not null");
-//                }
-//
-//                /* Write paths to server, wait for response */
-//
-//                // Open up channel to server
-//                AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
-//
-//                // TODO: Use existing connection, but make sure writing many different times doesn't have negative impact
-//                // Asynchronously connect to server
-//                channel.connect(serverAddr, null, new CompletionHandler<Void, Void>() {
-//                    @Override
-//                    public void completed(Void result, Void attachment) {
-//                        // First we send the message type to the server along with the size of the message
-//                        ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
-//
-//                        // Asynchronously write to server
-//                        channel.write(messageType, null, new CompletionHandler<Integer, Void>() {
-//                            @Override
-//                            public void completed(Integer result, Void attachment) {
-//                                // Now we send the rest of message to the server
-//                                ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
-//
-//                                // Asynchronously write to server
-//                                channel.write(message, null, new CompletionHandler<Integer, Void>() {
-//                                    @Override
-//                                    public void completed(Integer result, Void attachment) {
-//                                        // TaoLogger.log("Sent the rest of the message for writeback");
-//                                        if (message.remaining() > 0) {
-//                                            channel.write(message, null, this);
-//                                            return;
-//                                        }
-//
-//                                        // Asynchronously read response type and size from server
-//                                        ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
-//                                        channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
-//
-//                                            @Override
-//                                            public void completed(Integer result, Void attachment) {
-//                                                // Flip the byte buffer for reading
-//                                                messageTypeAndSize.flip();
-//
-//                                                // Parse the message type and size from server
-//                                                int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
-//
-//                                                int messageType = typeAndLength[0];
-//                                                int messageLength = typeAndLength[1];
-//
-//                                                if (messageType == MessageTypes.SERVER_RESPONSE) {
-//
-//                                                    // Read the response
-//                                                    ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
-//
-//                                                    channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
-//
-//                                                        @Override
-//                                                        public void completed(Integer result, Void attachment) {
-//                                                            while (messageResponse.remaining() > 0) {
-//                                                                channel.read(messageResponse);
-//                                                            }
-//
-//                                                            messageResponse.flip();
-//
-//                                                            byte[] serialized = new byte[messageLength];
-//                                                            messageResponse.get(serialized);
-//
-//                                                            // Create ServerResponse based on data
-//                                                            ServerResponse response = mMessageCreator.createServerResponse();
-//                                                            response.initFromSerialized(serialized);
-//
-//                                                            // Check to see if the write succeeded or not
-//                                                            if (response.getWriteStatus()) {
-//
-//                                                                // Acquire return lock
-//                                                                synchronized (returnLock) {
-//                                                                    // Set that this server did return
-//                                                                    serverDidReturn[serverIndexFinal] = true;
-//
-//                                                                    // Check if all the servers have returned
-//                                                                    boolean allReturn = true;
-//                                                                    for (int n = 0; n < serverDidReturn.length; n++) {
-//                                                                        if (! serverDidReturn[n]) {
-//                                                                            allReturn = false;
-//                                                                            break;
-//                                                                        }
-//                                                                    }
-//
-//                                                                    // If all the servers have successfully responded, we can delete nodes from subtree
-//                                                                    if (allReturn) {
-//                                                                        // Iterate through every path that was written, check if there are any nodes
-//                                                                        // we can delete
-//                                                                        for (Long pathID : allWriteBackIDs) {
-//                                                                            // Upon response, delete all nodes in subtree whose timestamp
-//                                                                            // is <= timeStamp, and are not in mPathReqMultiSet
-//                                                                            // TODO: check if shallow or deep copy
-//                                                                            Set<Long> set = new HashSet<>();
-//                                                                            for (Long l : mPathReqMultiSet.elementSet()) {
-//                                                                                set.add(l);
-//                                                                            }
-//                                                                           // mSubtree.printSubtree();
-//                                                                            mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
-//                                                                        }
-//
-//                                                                        TaoLogger.logDebug("TREE AFTER WRITEBACK");
-//                                                                       // mSubtree.printSubtree();
-//                                                                    }
-//                                                                }
-//                                                            } else {
-//                                                                // TODO: what happens on fail?
-//                                                            }
-//                                                        }
-//
-//                                                        @Override
-//                                                        public void failed(Throwable exc, Void attachment) {
-//                                                            // TODO: Implement?
-//                                                        }
-//                                                    });
-//                                                }
-//                                            }
-//
-//                                            @Override
-//                                            public void failed(Throwable exc, Void attachment) {
-//                                                // TODO: Implement?
-//                                            }
-//                                        });
-//                                    }
-//
-//                                    @Override
-//                                    public void failed(Throwable exc, Void attachment) {
-//                                        // TODO: Implement?
-//                                    }
-//                                });
-//                            }
-//
-//                            @Override
-//                            public void failed(Throwable exc, Void attachment) {
-//                                // TODO: Implement?
-//                            }
-//                        });
-//                    }
-//
-//                    @Override
-//                    public void failed(Throwable exc, Void attachment) {
-//                        // TODO: Implement?
-//                    }
-//                });
-//            }
         } catch (Exception e) {
             e.printStackTrace();
         }

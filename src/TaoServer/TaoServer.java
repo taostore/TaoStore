@@ -411,7 +411,10 @@ public class TaoServer {
                     serializedResponse = writeResponse.serialize();
                     messageTypeAndLength = Bytes.concat(Ints.toByteArray(MessageTypes.SERVER_RESPONSE), Ints.toByteArray(serializedResponse.length));
                 } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
-                    TaoLogger.logForce("Serving a write request");
+                    TaoLogger.logForce("Serving an initialize request");
+                    if (mMostRecentTimestamp[0] != 0) {
+                        mMostRecentTimestamp = new long[2 << mServerTreeHeight];
+                    }
 
                     // If the write was successful
                     boolean success = true;
@@ -490,12 +493,15 @@ public class TaoServer {
     public static void main(String[] args) {
         // Make sure user provides a storage size
         if (args.length != 1) {
-            System.out.println("Please provide desired size of storage in bytes");
+            System.out.println("Please provide desired size of storage in MB");
             return;
         }
 
+        // Convert megabytes to bytes
+        long inBytes = Long.parseLong(args[0]) * 1024 * 1024;
+
         // Create server and run
-        TaoServer server = new TaoServer(Long.parseLong(args[0]), new TaoMessageCreator());
+        TaoServer server = new TaoServer(inBytes, new TaoMessageCreator());
         server.run();
     }
 }
