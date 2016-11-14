@@ -16,19 +16,19 @@ import java.util.Objects;
  */
 public class TaoClientRequest implements ClientRequest {
     // The block ID that this request is asking for
-    private long mBlockID;
+    protected long mBlockID;
 
     // The type of request this is
-    private int mType;
+    protected int mType;
 
     // Either MessageTypes.CLIENT_READ_REQUEST or MessageTypes.CLIENT_WRITE_REQUEST
-    private byte[] mData;
+    protected byte[] mData;
 
     // ID that will uniquely identify this request
-    private long mRequestID;
+    protected long mRequestID;
 
     // The address of the client making the request
-    private InetSocketAddress mClientAddress;
+    protected InetSocketAddress mClientAddress;
 
     /**
      * @brief Default constructor

@@ -15,15 +15,15 @@ public class TaoProxyRequest implements ProxyRequest {
     // The type of response this is
     // 0 is READ
     // 1 is WRITE
-    private int mType;
+    protected int mType;
 
     // If mType == 0, this is the path that we are interested in reading
-    private long mReadPathID;
+    protected long mReadPathID;
 
     // Amount of bytes in a path
-    private int mPathSize;
-    private byte[] mDataToWrite;
-    private long mTimestamp;
+    protected int mPathSize;
+    protected byte[] mDataToWrite;
+    protected long mTimestamp;
 
     /**
      * @brief Default constructor

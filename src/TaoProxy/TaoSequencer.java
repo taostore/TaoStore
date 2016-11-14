@@ -18,23 +18,24 @@ import java.util.concurrent.*;
  */
 public class TaoSequencer implements Sequencer {
     // Size of request queue
-    private final static int QUEUE_SIZE = 100000;
+    protected final static int QUEUE_SIZE = 100000;
 
     // Map that will map each request to the value of the requested block
     // The value will be null if the reply to this request has not yet been received
-    private Map<ClientRequest, Block> mRequestMap;
+    protected Map<ClientRequest, Block> mRequestMap;
 
     // Queue of the received requests
-    private BlockingQueue<ClientRequest> mRequestQueue;
+    protected BlockingQueue<ClientRequest> mRequestQueue;
 
-    private PathCreator mBlockCreator;
-    private MessageCreator mMessageCreator;
+    // Path and message creators
+    protected PathCreator mBlockCreator;
+    protected MessageCreator mMessageCreator;
 
     // The channel group used for asynchronous socket
-    private AsynchronousChannelGroup mThreadGroup;
+    protected AsynchronousChannelGroup mThreadGroup;
 
     // A map of each client to a channel to that client
-    private Map<InetSocketAddress, AsynchronousSocketChannel> mChannelMap;
+    protected Map<InetSocketAddress, AsynchronousSocketChannel> mChannelMap;
 
     /**
      * @brief Default constructor for the TaoStore Sequencer
@@ -109,6 +110,8 @@ public class TaoSequencer implements Sequencer {
                 mRequestMap.replace(req, b);
                 mRequestMap.notify();
             }
+
+            TaoLogger.logInfo("Sequencer finished onReceiveResponse for " + req.getRequestID());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -132,7 +135,7 @@ public class TaoSequencer implements Sequencer {
                     }
                 }
 
-                TaoLogger.logInfo("Sequencer going to send response for " + req.getRequestID() );
+                TaoLogger.logInfo("1 Sequencer going to send response for " + req.getRequestID());
 
                 // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;

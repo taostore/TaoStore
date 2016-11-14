@@ -59,6 +59,7 @@ public class TaoClient implements Client {
             mClientAddress = new InetSocketAddress(currentIP, CLIENT_PORT);
 
             // Initialize proxy address
+            TaoLogger.logForce("I think the hostname is " + TaoConfigs.PROXY_HOSTNAME);
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
 
             // Create message creator
@@ -89,11 +90,56 @@ public class TaoClient implements Client {
         }
     }
 
+    /**
+     * @brief Constructor
+     * @param messageCreator
+     */
+    public TaoClient(MessageCreator messageCreator) {
+        try {
+            // Get the current client's IP
+            String currentIP = InetAddress.getLocalHost().getHostAddress();
+            mClientAddress = new InetSocketAddress(currentIP, CLIENT_PORT);
+
+            // Initialize proxy address
+            TaoLogger.logForce("I think the hostname is " + TaoConfigs.PROXY_HOSTNAME);
+            mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
+
+            // Create message creator
+            mMessageCreator = messageCreator;
+
+            // Initialize response wait map
+            mResponseWaitMap = new ConcurrentHashMap<>();
+
+            // Thread group used for asynchronous I/O
+            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Create and connect channel to proxy
+            mChannel = AsynchronousSocketChannel.open(mThreadGroup);
+            Future connection = mChannel.connect(mProxyAddress);
+            connection.get();
+
+            // Create executor
+            mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Create listener for proxy responses, wait until it is finished initializing
+            Object listenerWait = new Object();
+            synchronized (listenerWait) {
+                listenForResponse(listenerWait);
+                listenerWait.wait();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public byte[] read(long blockID) {
         try {
+            // Make request
+            ClientRequest request = makeRequest(MessageTypes.CLIENT_READ_REQUEST, blockID, null, null);
+
             // Send read request
-            ProxyResponse response = sendRequest(MessageTypes.CLIENT_READ_REQUEST, blockID, null);
+            ProxyResponse response = sendRequestWait(request);
 
             // Return read data
             return response.getReturnData();
@@ -107,8 +153,11 @@ public class TaoClient implements Client {
     @Override
     public boolean write(long blockID, byte[] data) {
         try {
+            // Make request
+            ClientRequest request = makeRequest(MessageTypes.CLIENT_WRITE_REQUEST, blockID, data, null);
+
             // Send write request
-            ProxyResponse response = sendRequest(MessageTypes.CLIENT_WRITE_REQUEST, blockID, data);
+            ProxyResponse response = sendRequestWait(request);
 
             // Return write status
             return response.getWriteStatus();
@@ -120,41 +169,52 @@ public class TaoClient implements Client {
 
 
     /**
-     * @brief Private helper method to send request to proxy and wait for response
+     * @brief Method to make a client request
      * @param type
      * @param blockID
      * @param data
-     * @return ProxyResponse to request
+     * @param extras
+     * @return a client request
      * NOTE: This method is likely not thread safe on requestID. Suggest adding lock if you need it to be
      */
-    private ProxyResponse sendRequest(int type, long blockID, byte[] data) {
+    protected ClientRequest makeRequest(int type, long blockID, byte[] data, List<Object> extras) {
+        // Keep track of requestID and increment it
+        long requestID = mRequestID;
+        mRequestID++;
+
+        // Create client request
+        ClientRequest request = mMessageCreator.createClientRequest();
+        request.setBlockID(blockID);
+        request.setRequestID(requestID);
+        request.setClientAddress(mClientAddress);
+
+        // Set additional data depending on message type
+        if (type == MessageTypes.CLIENT_READ_REQUEST) {
+            request.setType(MessageTypes.CLIENT_READ_REQUEST);
+            request.setData(new byte[TaoConfigs.BLOCK_SIZE]);
+        } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
+            request.setType(MessageTypes.CLIENT_WRITE_REQUEST);
+            request.setData(data);
+        }
+
+        return request;
+    }
+
+
+    /**
+     * @brief Private helper method to send request to proxy and wait for response
+     * @param request
+     * @return ProxyResponse to request
+     */
+    protected ProxyResponse sendRequestWait(ClientRequest request) {
         try {
-            // Keep track of requestID and increment it
-            long requestID = mRequestID;
-            mRequestID++;
-
-            // Create client request
-            ClientRequest request = mMessageCreator.createClientRequest();
-            request.setBlockID(blockID);
-            request.setRequestID(requestID);
-            request.setClientAddress(mClientAddress);
-
-            // Set additional data depending on message type
-            if (type == MessageTypes.CLIENT_READ_REQUEST) {
-                request.setType(MessageTypes.CLIENT_READ_REQUEST);
-                request.setData(new byte[TaoConfigs.BLOCK_SIZE]);
-            } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
-                request.setType(MessageTypes.CLIENT_WRITE_REQUEST);
-                request.setData(data);
-            }
-
             // Create an empty response and put it in the mResponseWaitMap
             ProxyResponse proxyResponse = mMessageCreator.createProxyResponse();
-            mResponseWaitMap.put(requestID, proxyResponse);
+            mResponseWaitMap.put(request.getRequestID(), proxyResponse);
 
             // Send request and wait until response
             synchronized (proxyResponse) {
-                sendRequest(request);
+                sendRequestToProxy(request);
                 proxyResponse.wait();
             }
 
@@ -172,7 +232,7 @@ public class TaoClient implements Client {
      * @param request
      * @return a ProxyResponse
      */
-    protected void sendRequest(ClientRequest request) {
+    protected void sendRequestToProxy(ClientRequest request) {
         try {
             // Send request to proxy
             byte[] serializedRequest = request.serialize();
@@ -239,6 +299,7 @@ public class TaoClient implements Client {
      */
     private void serveProxy(AsynchronousSocketChannel channel) {
         try {
+            TaoLogger.logError("\n Client has connection from proxy \n");
             // Create a ByteBuffer to read in message type
             ByteBuffer typeByteBuffer = MessageUtility.createTypeReceiveBuffer();
 
@@ -286,7 +347,7 @@ public class TaoClient implements Client {
                                 // Notify thread waiting for this response id
                                 synchronized (clientAnswer) {
                                     clientAnswer.notifyAll();
-                                    TaoLogger.logInfo("Got response to request #" + clientAnswer.getClientRequestID());
+                                    TaoLogger.logInfo("\n\nGot response to request #" + clientAnswer.getClientRequestID());
                                     mResponseWaitMap.remove(clientAnswer.getClientRequestID());
                                     serveProxy(channel);
                                 }
@@ -313,8 +374,11 @@ public class TaoClient implements Client {
     @Override
     public Future<byte[]> readAsync(long blockID) {
         Callable<byte[]> readTask = () -> {
+            // Make request
+            ClientRequest request = makeRequest(MessageTypes.CLIENT_READ_REQUEST, blockID, null, null);
+
             // Send read request
-            ProxyResponse response = sendRequest(MessageTypes.CLIENT_READ_REQUEST, blockID, null);
+            ProxyResponse response = sendRequestWait(request);
             return response.getReturnData();
         };
 
@@ -326,8 +390,11 @@ public class TaoClient implements Client {
     @Override
     public Future<Boolean> writeAsync(long blockID, byte[] data) {
         Callable<Boolean> readTask = () -> {
+            // Make request
+            ClientRequest request = makeRequest(MessageTypes.CLIENT_WRITE_REQUEST, blockID, data, null);
+
             // Send write request
-            ProxyResponse response = sendRequest(MessageTypes.CLIENT_WRITE_REQUEST, blockID, data);
+            ProxyResponse response = sendRequestWait(request);
             return response.getWriteStatus();
         };
 

@@ -53,6 +53,12 @@ public class TaoProxy implements Proxy {
     protected PositionMap mPositionMap;
 
     /**
+     * @brief Default constructor
+     */
+    public TaoProxy() {
+    }
+
+    /**
      * @brief Constructor
      * @param minServerSize
      * @param messageCreator
@@ -61,7 +67,7 @@ public class TaoProxy implements Proxy {
     public TaoProxy(long minServerSize, MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree) {
         try {
             // For trace purposes
-            TaoLogger.logLevel = TaoLogger.LOG_ERROR;
+            TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
 
             // Initialize needed constants
             TaoConfigs.initConfiguration(minServerSize);

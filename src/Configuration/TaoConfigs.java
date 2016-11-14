@@ -17,7 +17,7 @@ public class TaoConfigs {
     public static final int PROXY_THREAD_COUNT = 100;
 
     // The writeback threshold for the proxy
-    public static final int WRITE_BACK_THRESHOLD = 40000;
+    public static int WRITE_BACK_THRESHOLD = 40000;
 
     // Port used by proxy
     public static String PROXY_HOSTNAME = "10.138.0.2";
@@ -64,7 +64,7 @@ public class TaoConfigs {
     public static int SERVER_PORT = 12338;
 
     // The list of storage servers to be used by proxy
-    public static final List<InetSocketAddress> PARTITION_SERVERS =
+    public static List<InetSocketAddress> PARTITION_SERVERS =
             Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT),
                     new InetSocketAddress("10.128.0.3", SERVER_PORT),
                     new InetSocketAddress("10.128.0.4", SERVER_PORT),
@@ -103,6 +103,12 @@ public class TaoConfigs {
 
         // Calculate the size, in bytes, each storage server will store
         STORAGE_SERVER_SIZE = calculateSize(STORAGE_SERVER_TREE_HEIGHT);
+    }
+
+    public static void prepareForDemo() {
+        PROXY_HOSTNAME = "localhost";
+        PARTITION_SERVERS = Arrays.asList(new InetSocketAddress("localhost", SERVER_PORT));
+        WRITE_BACK_THRESHOLD = 1;
     }
 
     /**

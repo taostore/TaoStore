@@ -24,70 +24,70 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class TaoProcessor implements Processor {
     // Stash to hold blocks
-    private Stash mStash;
+    protected Stash mStash;
 
     // Map that maps a block ID to a list of requests for that block ID
     // Used so that we know when to issue fake reads (fake reads are issued if the list for a requestID is non empty)
-    private Map<Long, List<ClientRequest>> mRequestMap;
+    protected Map<Long, List<ClientRequest>> mRequestMap;
 
     // Lock used to ensure that additions to the request map are not overridden by deletions in writeBack
-    private final ReentrantReadWriteLock mRequestMapLock = new ReentrantReadWriteLock();
+    protected final ReentrantReadWriteLock mRequestMapLock = new ReentrantReadWriteLock();
 
     // Map that maps client requests to a ResponseMapEntry, signifying whether or not a request has been received or not
-    private Map<ClientRequest, ResponseMapEntry> mResponseMap;
+    protected Map<ClientRequest, ResponseMapEntry> mResponseMap;
 
     // MultiSet which keeps track of which paths have been requested but not yet returned
     // This is needed for write back, to know what should or should not be deleted from the subtree when write completes
-    private Multiset<Long> mPathReqMultiSet;
+    protected Multiset<Long> mPathReqMultiSet;
 
     // Subtree
-    private Subtree mSubtree;
+    protected Subtree mSubtree;
 
     // Counter used to know when we should writeback
-    private long mWriteBackCounter;
+    protected long mWriteBackCounter;
 
     // Used to keep track of when the next writeback should occur
     // When mWriteBackCounter == mNextWriteBack, a writeback should occur
-    private long mNextWriteBack;
+    protected long mNextWriteBack;
 
     // Used to make sure that the writeback is only executed by one thread
-    private final transient ReentrantLock mWriteBackLock = new ReentrantLock();
+    protected final transient ReentrantLock mWriteBackLock = new ReentrantLock();
 
     // Write queue used to store which paths should be sent to server on next writeback
-    private Queue<Long> mWriteQueue;
+    protected Queue<Long> mWriteQueue;
 
     // Position map which keeps track of what leaf each block corresponds to
-    private PositionMap mPositionMap;
+    protected PositionMap mPositionMap;
 
     // Proxy that this processor belongs to
-    private Proxy mProxy;
+    protected Proxy mProxy;
 
     // Sequencer that belongs to the proxy
-    private Sequencer mSequencer;
+    protected Sequencer mSequencer;
 
     // The channel group used for asynchronous socket
-    private AsynchronousChannelGroup mThreadGroup;
+    protected AsynchronousChannelGroup mThreadGroup;
 
     // CryptoUtil used for encrypting and decrypting paths
-    private CryptoUtil mCryptoUtil;
+    protected CryptoUtil mCryptoUtil;
 
     // MessageCreator for creating different types of messages
-    private MessageCreator mMessageCreator;
+    protected MessageCreator mMessageCreator;
 
     // PathCreator responsible for making empty blocks, buckets, and paths
-    private PathCreator mPathCreator;
+    protected PathCreator mPathCreator;
 
     // A map that maps each leafID to the relative leaf ID it would have within a server partition
-    private Map<Long, Long> mRelativeLeafMapper;
+    protected Map<Long, Long> mRelativeLeafMapper;
 
     // Map each client to a map that map's each storage server's InetSocketAddress to a channel to that storage server
     // Note this is needed because if we instead make a new channel on each read or write to server, we may cause an
     // error of having no more sockets. Can be improved to have more than just one channel per server per client.
-    private Map<InetSocketAddress, Map<InetSocketAddress, AsynchronousSocketChannel>> mProxyToServerChannelMap;
+    protected Map<InetSocketAddress, Map<InetSocketAddress, AsynchronousSocketChannel>> mProxyToServerChannelMap;
 
     // Each client will have a map that maps each storage server's InetSocketAddress to a boolean
     // This boolean will indicate if the channel for that storage server (for this client) is being used for I/O
-    private Map<InetSocketAddress, Map<InetSocketAddress, Boolean>> mAsyncProxyToServerTakenMap;
+    protected Map<InetSocketAddress, Map<InetSocketAddress, Boolean>> mAsyncProxyToServerTakenMap;
 
 
     /**
@@ -379,7 +379,7 @@ public class TaoProcessor implements Processor {
      * @brief Private helper method to make a map of server addresses to channels for addr
      * @param addr
      */
-    private void makeInitialConnections(InetSocketAddress addr) {
+    protected void makeInitialConnections(InetSocketAddress addr) {
         try {
             // Get the number of storage servers
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
