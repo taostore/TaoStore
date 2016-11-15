@@ -63,6 +63,7 @@ public class TaoClientTest {
        // System.out.println("done sleeping");
         TaoClient client = new TaoClient();
 
+        TaoLogger.logForce("start");
         // Send write request
         long blockID = 3;
         byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
@@ -77,7 +78,7 @@ public class TaoClientTest {
         boolean writeStatus1 = client.write(blockID, dataToWrite1);
         assertTrue(writeStatus1);
 
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 1000; i++) {
             if (i % 2 == 0) {
                 blockID = 3;
             } else {
@@ -91,5 +92,6 @@ public class TaoClientTest {
                 assertTrue(Arrays.equals(dataToWrite1, z));
             }
         }
+        TaoLogger.logForce("end");
     }
 }

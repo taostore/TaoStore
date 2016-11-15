@@ -302,7 +302,6 @@ public class TaoProcessor implements Processor {
                         // Asynchronously read response type and size from server
                         ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
 
-                       // TaoLogger.logForce("Waiting to receive header from server");
                         channelToServer.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
                             @Override
                             public void completed(Integer result, Void attachment) {
@@ -311,8 +310,6 @@ public class TaoProcessor implements Processor {
                                     channelToServer.read(messageTypeAndSize, null, this);
                                     return;
                                 }
-
-                                //TaoLogger.logForce("Done receiving header server");
 
                                 // Flip the byte buffer for reading
                                 messageTypeAndSize.flip();
@@ -324,7 +321,6 @@ public class TaoProcessor implements Processor {
 
                                 // Asynchronously read response from server
                                 ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
-                               // TaoLogger.logForce("Waiting to receive path from server");
                                 channelToServer.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
                                     @Override
                                     public void completed(Integer result, Void attachment) {
@@ -334,7 +330,6 @@ public class TaoProcessor implements Processor {
                                             return;
                                         }
 
-                                      //  TaoLogger.logForce("Received path from server");
                                         // Flip the byte buffer for reading
                                         pathInBytes.flip();
 
@@ -555,8 +550,8 @@ public class TaoProcessor implements Processor {
      * @return the data from block
      */
     public byte[] getDataFromBlock(long blockID) {
-        TaoLogger.logForce("Trying to get data for blockID " + blockID);
-        TaoLogger.logForce("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
+        TaoLogger.logDebug("Trying to get data for blockID " + blockID);
+        TaoLogger.logDebug("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
 
         // Due to multiple threads moving blocks around, we need to run this in a loop
         while (true) {
@@ -565,32 +560,32 @@ public class TaoProcessor implements Processor {
 
             if (targetBucket != null) {
                 // If we found the bucket in the subtree, we can attempt to get the data from the block in bucket
-                TaoLogger.logForce("Bucket containing block found in subtree");
+                TaoLogger.logDebug("Bucket containing block found in subtree");
                 byte[] data = targetBucket.getDataFromBlock(blockID);
 
                 // Check if this data is not null
                 if (data != null) {
                     // If not null, we return the data
-                    TaoLogger.logForce("Returning data for block " + blockID);
+                    TaoLogger.logDebug("Returning data for block " + blockID);
                     return data;
                 } else {
                     // If null, we look again
-                    TaoLogger.logForce("scuba But bucket does not have the data we want");
+                    TaoLogger.logDebug("scuba But bucket does not have the data we want");
                     System.exit(1);
                     // continue;
                 }
             } else {
                 // If the block wasn't in the subtree, it should be in the stash
-                TaoLogger.logForce("Cannot find in subtree");
+                TaoLogger.logDebug("Cannot find in subtree");
                 Block targetBlock = mStash.getBlock(blockID);
 
                 if (targetBlock != null) {
                     // If we found the block in the stash, return the data
-                    TaoLogger.logForce("Returning data for block " + blockID);
+                    TaoLogger.logDebug("Returning data for block " + blockID);
                     return targetBlock.getData();
                 } else {
                     // If we did not find the block, we LOOK AGAIN
-                    TaoLogger.logForce("scuba Cannot find in subtree or stash");
+                    TaoLogger.logDebug("scuba Cannot find in subtree or stash");
                     System.exit(1);
                     // continue;
                 }
