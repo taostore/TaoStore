@@ -9,3 +9,5 @@ TaoStore
   * The server jar takes in the total size of the system in bytes
 * For optimal performance, "warm up" system beforehand by doing a healthy amount of operations before measuring throughput, response times, etc.
   * Reasons for this mainly involve needing to initialize several data structures, as well as JIT compiling Java byte code into native code
+* Has dependency on guava.jar https://github.com/google/guava 
+  * Can be downloaded here https://github.com/google/guava/wiki/Release19
