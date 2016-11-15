@@ -1,7 +1,5 @@
 package TaoProxy;
 
-import Configuration.TaoConfigs;
-import Messages.MessageTypes;
 import Messages.ServerResponse;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
@@ -30,32 +28,6 @@ public class TaoServerResponse implements ServerResponse {
         mWriteStatus = false;
         mPathID = -1;
         mEncryptedPath = null;
-    }
-
-    /**
-     * @brief Constructor that creates a response for the given request
-     * @param pathID
-     * @param encryptedData
-     */
-    public TaoServerResponse(long pathID, byte[] encryptedData) {
-        mWriteStatus = false;
-        mPathID = pathID;
-        mEncryptedPath = encryptedData;
-    }
-
-    /**
-     * @brief
-     * @param serializedData
-     */
-    public TaoServerResponse(byte[] serializedData) {
-        int type = Ints.fromByteArray(Arrays.copyOfRange(serializedData, 0, 4));
-        mWriteStatus = type == 1 ? true : false;
-        if (serializedData.length > 4) {
-            mPathID = Longs.fromByteArray(Arrays.copyOfRange(serializedData, 4, 12));
-            mEncryptedPath = Arrays.copyOfRange(serializedData, 12, serializedData.length);
-        } else {
-            mEncryptedPath = null;
-        }
     }
 
     @Override

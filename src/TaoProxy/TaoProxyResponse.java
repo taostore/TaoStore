@@ -31,44 +31,6 @@ public class TaoProxyResponse implements ProxyResponse {
         mWriteStatus = false;
     }
 
-    /**
-     * @brief
-     * @param clientRequestID
-     */
-    public TaoProxyResponse(long clientRequestID) {
-        mClientRequestID = clientRequestID;
-    }
-
-    /**
-     * @brief
-     * @param clientRequestID
-     * @param returnData
-     */
-    public TaoProxyResponse(long clientRequestID, byte[] returnData) {
-        mClientRequestID = clientRequestID;
-        mReturnData = returnData;
-        mWriteStatus = false;
-    }
-
-    /**
-     * @brief
-     * @param clientRequestID
-     * @param writeStatus
-     */
-    public TaoProxyResponse(long clientRequestID, boolean writeStatus) {
-        mClientRequestID = clientRequestID;
-        mReturnData = new byte[TaoConfigs.BLOCK_SIZE];
-        mWriteStatus = writeStatus;
-    }
-
-    /**
-     * @brief
-     * @param serializedData
-     */
-    public TaoProxyResponse(byte[] serializedData) {
-        initFromSerialized(serializedData);
-    }
-
     @Override
     public void initFromSerialized(byte[] serialized) {
         int startIndex = 0;

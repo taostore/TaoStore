@@ -1,7 +1,5 @@
 package TaoProxy;
 
-import com.google.common.collect.Multiset;
-
 import java.util.Set;
 
 public interface Subtree {
@@ -13,6 +11,8 @@ public interface Subtree {
      */
     void addPath(Path path);
 
+    void addPath(Path path, long timestamp);
+
     /**
      * @brief Method to get requested path from subtree
      * note: shallow copy
@@ -20,6 +20,8 @@ public interface Subtree {
      * @return path with ID == pathID
      */
     Path getPath(long pathID);
+
+    Path getCopyOfPath(long pathID);
 
     /**
      * @brief Method to get a bucket in the subtree the contains the specified block with block ID == blockID
@@ -50,5 +52,8 @@ public interface Subtree {
      */
     void clearPath(long pathID);
 
+    /**
+     * @brief Used for debugging, prints subtree contents
+     */
     void printSubtree();
 }

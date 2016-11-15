@@ -1,16 +1,16 @@
 package TaoProxyTest;
 
 import Configuration.TaoConfigs;
-import TaoProxy.Path;
-import TaoProxy.PathCreator;
-import TaoProxy.TaoBlockCreator;
-import TaoProxy.TaoCryptoUtil;
+import TaoProxy.*;
+import com.google.common.collect.ConcurrentHashMultiset;
+import com.google.common.collect.Multiset;
 import org.junit.Test;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 import static org.junit.Assert.*;
 
@@ -23,15 +23,7 @@ public class TaoCryptoUtilTest {
         long systemSize = 246420;
 
         TaoConfigs.initConfiguration(systemSize);
-        KeyGenerator keyGen = null;
-        try {
-            keyGen = KeyGenerator.getInstance("AES");
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        }
-        keyGen.init(128);
-        SecretKey mKey = keyGen.generateKey();
-        TaoCryptoUtil mCryptoUtil = new TaoCryptoUtil(mKey);
+        TaoCryptoUtil mCryptoUtil = new TaoCryptoUtil();
 
         PathCreator pc = new TaoBlockCreator();
 
@@ -42,7 +34,21 @@ public class TaoCryptoUtilTest {
 
         Path unencrypted = mCryptoUtil.decryptPath(encryption);
 
-        assertEquals(p.getPathID(), unencrypted.getPathID());
 
+        Bucket[] oldBuckets = p.getBuckets();
+        Bucket[] newBuckets = unencrypted.getBuckets();
+        for (int i = 0; i < newBuckets.length; i++) {
+            Block[] newBlocks = newBuckets[i].getBlocks();
+            Block[] testBlocks = oldBuckets[i].getBlocks();
+            for (int j = 0; j < newBlocks.length; j++) {
+                // Check the IDs of each block
+                assertEquals(testBlocks[j].getBlockID(), newBlocks[j].getBlockID());
+
+                // Check the data of each block
+                assertTrue(Arrays.equals(testBlocks[j].getData(), newBlocks[j].getData()));
+            }
+        }
+
+        assertEquals(p.getPathID(), unencrypted.getPathID());
     }
 }

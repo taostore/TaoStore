@@ -1,6 +1,4 @@
-package TaoProxy;
-
-import Configuration.TaoConfigs;
+package Configuration;
 
 /**
  * @brief Utility class with useful static methods
@@ -47,7 +45,6 @@ public class Utility {
      * @return greatest level of intersection between two paths
      */
     public static long getGreatestCommonLevel(long pathOne, long pathTwo) {
-        // TODO: Check size
         long indexBit = 1 << (TaoConfigs.TREE_HEIGHT - 1);
         int greatestLevel = 0;
 

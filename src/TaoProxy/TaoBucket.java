@@ -109,13 +109,6 @@ public class TaoBucket implements Bucket {
         return (mBucketBitmap & mask) == mask;
     }
 
-    // TODO: do this
-    // TODO: Still need this?
-    @Override
-    public boolean removeBlock(long blockID) {
-        return false;
-    }
-
     @Override
     public boolean addBlock(Block block, long time) {
         // Get write lock for this bucket
@@ -234,20 +227,9 @@ public class TaoBucket implements Bucket {
         return mUpdateTime;
     }
 
-    /**
-     * @brief Method to get block with given block ID from bucket. Returns null if blockID not found
-     * @param blockID
-     * @return block with block ID == blockID. null if not found
-     */
-    // TODO: Probably remove
-    public Block getBlock(long blockID) {
-        for (int i = 0; i < TaoConfigs.BLOCKS_IN_BUCKET; i++) {
-            if (checkBlockFilled(i) && mBlocks[i].getBlockID() == blockID) {
-                // TODO: return copy?
-                return mBlocks[i];
-            }
-        }
-        return null;
+    @Override
+    public void setUpdateTime(long timestamp) {
+        mUpdateTime = timestamp;
     }
 
     @Override

@@ -16,19 +16,19 @@ import java.util.Objects;
  */
 public class TaoClientRequest implements ClientRequest {
     // The block ID that this request is asking for
-    private long mBlockID;
+    protected long mBlockID;
 
     // The type of request this is
-    private int mType;
+    protected int mType;
 
     // Either MessageTypes.CLIENT_READ_REQUEST or MessageTypes.CLIENT_WRITE_REQUEST
-    private byte[] mData;
+    protected byte[] mData;
 
     // ID that will uniquely identify this request
-    private long mRequestID;
+    protected long mRequestID;
 
     // The address of the client making the request
-    private InetSocketAddress mClientAddress;
+    protected InetSocketAddress mClientAddress;
 
     /**
      * @brief Default constructor
@@ -38,7 +38,7 @@ public class TaoClientRequest implements ClientRequest {
         mType = -1;
         mData = new byte[TaoConfigs.BLOCK_SIZE];
         mRequestID = -1;
-        mClientAddress = new InetSocketAddress(TaoConfigs.CLIENT_HOSTNAME, TaoConfigs.CLIENT_PORT);
+        mClientAddress = null;
     }
 
     @Override
@@ -46,28 +46,21 @@ public class TaoClientRequest implements ClientRequest {
         int startIndex = 0;
         mBlockID = Longs.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 8));
         startIndex += 8;
-
         mType = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
-
         mRequestID = Longs.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 8));
         startIndex += 8;
-
         mData = Arrays.copyOfRange(serialized, startIndex, startIndex + TaoConfigs.BLOCK_SIZE);
         startIndex += TaoConfigs.BLOCK_SIZE;
-
         int hostnameSize = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
-
         byte[] hostnameBytes = Arrays.copyOfRange(serialized, startIndex, startIndex + hostnameSize);
         startIndex += hostnameSize;
-
         String hostname = new String(hostnameBytes, StandardCharsets.UTF_8);
-
         int port = Ints.fromByteArray(Arrays.copyOfRange(serialized, startIndex, startIndex + 4));
         startIndex += 4;
-
-        mClientAddress = new InetSocketAddress(hostname, port);
+        // Cache to avoid having to recreate InetSocketAddress object
+        mClientAddress = ClientAddressCache.getFromCache(hostname, Integer.toString(port));
     }
 
     @Override
@@ -154,7 +147,7 @@ public class TaoClientRequest implements ClientRequest {
 
     @Override
     public int hashCode() {
-        return Objects.hash(mRequestID);
+        return Objects.hash(mRequestID, mClientAddress.getHostName());
     }
 
 }
