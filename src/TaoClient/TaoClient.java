@@ -14,6 +14,7 @@ import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -445,7 +446,7 @@ public class TaoClient implements Client {
      */
     public static void loadTest(Client client) {
         // Random number generator
-        Random r = new Random();
+        SecureRandom r = new SecureRandom();
 
         // Number of unique data items to operate on
         int numDataItems = 1000;
