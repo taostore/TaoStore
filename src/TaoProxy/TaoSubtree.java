@@ -364,6 +364,8 @@ public class TaoSubtree implements Subtree {
         // Check if we should delete the child
         TaoLogger.logDebug("The current parent level is " + parentLevel + " and the lastLevelToSave is " + lastLevelToSave);
 
+        child.print();
+
         // Check if we should delete child
         if (timestamp < minTime && ! isBucketInSet(pathID, currentLevel, pathReqMultiSet) && currentLevel > lastLevelToSave) {
             TaoLogger.logDebug("Deleting because " + timestamp + " < " + minTime);

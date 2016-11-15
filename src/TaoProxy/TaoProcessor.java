@@ -496,6 +496,7 @@ public class TaoProcessor implements Processor {
 
                 // Check if the request was a write
                 if (currentRequest.getType() == MessageTypes.CLIENT_WRITE_REQUEST) {
+                    TaoLogger.logDebug("Write request BlockID " + req.getBlockID());
                     if (elementDoesExist) {
                         // The element should exist somewhere
                         writeDataToBlock(currentRequest.getBlockID(), currentRequest.getData());
@@ -509,9 +510,11 @@ public class TaoProcessor implements Processor {
                     }
                     canPutInPositionMap = true;
                 } else {
+                    TaoLogger.logDebug("Read request BlockID " + req.getBlockID());
                     // If elementDoesExist == false and the request is not a write, we will not put assign this block ID
                     // a path in the position map
                     if (! elementDoesExist) {
+                        TaoLogger.logDebug("Read request does not exist BlockID " + req.getBlockID());
                         canPutInPositionMap = false;
                     }
                 }
@@ -528,7 +531,9 @@ public class TaoProcessor implements Processor {
                 }
 
                 // After the first pass through the loop, the element is guaranteed to exist
-                elementDoesExist = true;
+                if (canPutInPositionMap) {
+                    elementDoesExist = true;
+                }
             }
 
             if (canPutInPositionMap) {
@@ -550,8 +555,8 @@ public class TaoProcessor implements Processor {
      * @return the data from block
      */
     public byte[] getDataFromBlock(long blockID) {
-        TaoLogger.logDebug("Trying to get data for blockID " + blockID);
-        TaoLogger.logDebug("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
+        TaoLogger.logForce("Trying to get data for blockID " + blockID);
+        TaoLogger.logForce("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
 
         // Due to multiple threads moving blocks around, we need to run this in a loop
         while (true) {
@@ -560,32 +565,34 @@ public class TaoProcessor implements Processor {
 
             if (targetBucket != null) {
                 // If we found the bucket in the subtree, we can attempt to get the data from the block in bucket
-                TaoLogger.logDebug("Bucket containing block found in subtree");
+                TaoLogger.logForce("Bucket containing block found in subtree");
                 byte[] data = targetBucket.getDataFromBlock(blockID);
 
                 // Check if this data is not null
                 if (data != null) {
                     // If not null, we return the data
-                    TaoLogger.logDebug("Returning data for block " + blockID);
+                    TaoLogger.logForce("Returning data for block " + blockID);
                     return data;
                 } else {
                     // If null, we look again
-                    TaoLogger.logDebug("scuba But bucket does not have the data we want");
-                    continue;
+                    TaoLogger.logForce("scuba But bucket does not have the data we want");
+                    System.exit(1);
+                    // continue;
                 }
             } else {
                 // If the block wasn't in the subtree, it should be in the stash
-                TaoLogger.logDebug("Cannot find in subtree");
+                TaoLogger.logForce("Cannot find in subtree");
                 Block targetBlock = mStash.getBlock(blockID);
 
                 if (targetBlock != null) {
                     // If we found the block in the stash, return the data
-                    TaoLogger.logDebug("Returning data for block " + blockID);
+                    TaoLogger.logForce("Returning data for block " + blockID);
                     return targetBlock.getData();
                 } else {
                     // If we did not find the block, we LOOK AGAIN
                     TaoLogger.logForce("scuba Cannot find in subtree or stash");
-                    continue;
+                    System.exit(1);
+                    // continue;
                 }
             }
         }

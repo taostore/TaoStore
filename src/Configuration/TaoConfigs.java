@@ -65,10 +65,10 @@ public class TaoConfigs {
 
     // The list of storage servers to be used by proxy
     public static List<InetSocketAddress> PARTITION_SERVERS =
-            Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT));//,
-//                    new InetSocketAddress("10.128.0.3", SERVER_PORT),
-//                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
-//                    new InetSocketAddress("10.128.0.5", SERVER_PORT));
+            Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.3", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
+                    new InetSocketAddress("10.128.0.5", SERVER_PORT));
 
     // Used for testing
     public static List<InetSocketAddress> TEST_PARTITION_SERVERS = Arrays.asList(new InetSocketAddress("localhost", SERVER_PORT));

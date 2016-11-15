@@ -16,6 +16,7 @@ import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @brief Class to represent a client of TaoStore
@@ -32,7 +33,7 @@ public class TaoClient implements Client {
 
     // Counter to keep track of current request number
     // Incremented after each request
-    protected static int mRequestID = 0;
+    protected AtomicLong mRequestID;
 
     // Thread group for asynchronous sockets
     protected AsynchronousChannelGroup mThreadGroup;
@@ -84,6 +85,9 @@ public class TaoClient implements Client {
             // Initialize list
             mResponseTimes = new ArrayList<>();
 
+            // Request ID counter
+            mRequestID = new AtomicLong();
+
             // Create listener for proxy responses, wait until it is finished initializing
             Object listenerWait = new Object();
             synchronized (listenerWait) {
@@ -124,6 +128,12 @@ public class TaoClient implements Client {
 
             // Create executor
             mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
+
+            // Initialize list
+            mResponseTimes = new ArrayList<>();
+
+            // Request ID counter
+            mRequestID = new AtomicLong();
 
             // Create listener for proxy responses, wait until it is finished initializing
             Object listenerWait = new Object();
@@ -179,12 +189,10 @@ public class TaoClient implements Client {
      * @param data
      * @param extras
      * @return a client request
-     * NOTE: This method is likely not thread safe on requestID. Suggest adding lock if you need it to be
      */
     protected ClientRequest makeRequest(int type, long blockID, byte[] data, List<Object> extras) {
         // Keep track of requestID and increment it
-        long requestID = mRequestID;
-        mRequestID++;
+        long requestID = mRequestID.getAndAdd(1);
 
         // Create client request
         ClientRequest request = mMessageCreator.createClientRequest();
@@ -446,6 +454,7 @@ public class TaoClient implements Client {
         long blockID;
         ArrayList<byte[]> listOfBytes = new ArrayList<>();
 
+        int requestID = 0;
         boolean writeStatus;
         for (int i = 1; i <= numDataItems; i++) {
             TaoLogger.logInfo("Doing a write for block " + i);
@@ -454,14 +463,16 @@ public class TaoClient implements Client {
             Arrays.fill(dataToWrite, (byte) blockID);
             listOfBytes.add(dataToWrite);
 
-            writeStatus = client.write(blockID, dataToWrite);
+//            writeStatus = client.write(blockID, dataToWrite);
+//
+//            if (!writeStatus) {
+//                TaoLogger.logError("Write failed for block " + i);
+//                System.exit(1);
+//            } else {
+//                TaoLogger.logInfo("Write was successful for " + i);
+//            }
 
-            if (!writeStatus) {
-                TaoLogger.logError("Write failed for block " + i);
-                System.exit(1);
-            } else {
-                TaoLogger.logInfo("Write was successful for " + i);
-            }
+        //    requestID++;
         }
 
         int readOrWrite;
@@ -475,29 +486,32 @@ public class TaoClient implements Client {
             targetBlock = r.nextInt(numDataItems) + 1;
 
             if (readOrWrite == 0) {
-                TaoLogger.logInfo("Doing read request #" + mRequestID);
+                TaoLogger.logInfo("Doing read request #" + ((TaoClient) client).mRequestID.get());
 
                 // Send read and keep track of response time
                 long start = System.currentTimeMillis();
-                z = client.read(targetBlock);
+                // z = client.read(targetBlock);
+                client.readAsync(targetBlock);
                 mResponseTimes.add(System.currentTimeMillis() - start);
 
-                if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
-                    TaoLogger.logError("Read failed for block " + targetBlock);
-                    System.exit(1);
-                }
+//                if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
+//                    TaoLogger.logError("Read failed for block " + targetBlock);
+//                    System.exit(1);
+//                }
             } else {
-                TaoLogger.logInfo("Doing write request #" + mRequestID);
+                TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
 
                 // Send write and keep track of response time
                 long start = System.currentTimeMillis();
-                writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
+                // writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
+                client.writeAsync(targetBlock, listOfBytes.get(targetBlock - 1));
                 mResponseTimes.add(System.currentTimeMillis() - start);
 
-                if (!writeStatus) {
-                    TaoLogger.logError("Write failed for block " + targetBlock);
-                    System.exit(1);
-                }
+//                if (!writeStatus) {
+//                    TaoLogger.logError("Write failed for block " + targetBlock);
+//                    System.exit(1);
+//                }
+                requestID++;
             }
         }
         long endTime = System.currentTimeMillis();
