@@ -122,7 +122,7 @@ public class TaoProxy implements Proxy {
     public TaoProxy(MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree, boolean synhronousOptimized) {
         try {
             // For trace purposes
-            TaoLogger.logLevel = TaoLogger.LOG_OFF;
+            TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
 
             // Initialize needed constants
             TaoConfigs.initConfiguration();
