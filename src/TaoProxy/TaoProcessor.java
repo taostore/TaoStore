@@ -982,13 +982,11 @@ public class TaoProcessor implements Processor {
                                                         }
                                                     }
                                                 } else {
-                                                    // TODO: what happens on fail?
                                                 }
                                             }
 
                                             @Override
                                             public void failed(Throwable exc, Void attachment) {
-                                                // TODO: Implement?
                                             }
                                         });
                                     }
@@ -996,7 +994,6 @@ public class TaoProcessor implements Processor {
 
                                 @Override
                                 public void failed(Throwable exc, Void attachment) {
-                                    // TODO: Implement?
                                 }
                             });
                         }

@@ -20,9 +20,7 @@ import static org.junit.Assert.*;
 public class TaoCryptoUtilTest {
     @Test
     public void testEncryptDecryptPath() {
-        long systemSize = 246420;
-
-        TaoConfigs.initConfiguration(systemSize);
+        TaoConfigs.initConfiguration();
         TaoCryptoUtil mCryptoUtil = new TaoCryptoUtil();
 
         PathCreator pc = new TaoBlockCreator();

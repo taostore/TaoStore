@@ -18,17 +18,11 @@ import static org.junit.Assert.*;
 public class TaoClientTest {
     @Test
     public void testReadWrite() {
-        TaoConfigs.PARTITION_SERVERS = TaoConfigs.TEST_PARTITION_SERVERS;
-        TaoConfigs.PROXY_HOSTNAME = "localhost";
-
-        // Set system size
-        long systemSize = 246420;
-
         // Create and run server
         Runnable serverRunnable = () -> {
             // Create server
             MessageCreator m = new TaoMessageCreator();
-            TaoServer server = new TaoServer(systemSize, m);
+            TaoServer server = new TaoServer(m);
 
             // Run server
             server.run();
@@ -46,7 +40,7 @@ public class TaoClientTest {
             MessageCreator n = new TaoMessageCreator();
             PathCreator p = new TaoBlockCreator();
             Subtree s = new TaoSubtree();
-            TaoProxy proxy = new TaoProxy(systemSize, n, p, s);
+            TaoProxy proxy = new TaoProxy(n, p, s);
 
             proxy.initializeServer();
             proxy.run();
@@ -60,10 +54,10 @@ public class TaoClientTest {
             e.printStackTrace();
         }
 
-       // System.out.println("done sleeping");
+        System.out.println("done sleeping");
         TaoClient client = new TaoClient();
 
-        TaoLogger.logForce("start");
+        System.out.println("start");
         // Send write request
         long blockID = 3;
         byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];

@@ -21,8 +21,7 @@ import static org.junit.Assert.*;
 public class TaoSubtreeTest {
     @Test
     public void testModify() {
-        long systemSize = 246420;
-        TaoConfigs.initConfiguration(systemSize);
+        TaoConfigs.initConfiguration();
 
         Subtree testSubtree = new TaoSubtree();
 

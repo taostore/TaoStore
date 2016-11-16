@@ -16,8 +16,7 @@ import static org.junit.Assert.*;
 public class TaoBlockTest {
     @Test
     public void testSerialize() {
-        long systemSize = 246420;
-        TaoConfigs.initConfiguration(systemSize);
+        TaoConfigs.initConfiguration();
 
         TaoBlock b = new TaoBlock();
         b.setBlockID(11);

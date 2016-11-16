@@ -20,9 +20,8 @@ import static org.junit.Assert.*;
 public class TaoServerTest {
     @Test
     public void testReadWritePath() {
-        TaoConfigs.PARTITION_SERVERS = TaoConfigs.TEST_PARTITION_SERVERS;
         // Create server
-        TaoServer server = new TaoServer(246420, new TaoMessageCreator());
+        TaoServer server = new TaoServer(new TaoMessageCreator());
         TaoCryptoUtil cryptoUtil = new TaoCryptoUtil();
 
         // Create empty path

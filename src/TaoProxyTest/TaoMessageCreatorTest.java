@@ -20,41 +20,17 @@ import static org.junit.Assert.*;
 public class TaoMessageCreatorTest {
     @Test
     public void testClientRequest() {
-        MessageCreator messageCreator = new TaoMessageCreator();
-        ClientRequest clientRequest = messageCreator.createClientRequest();
-        clientRequest.setBlockID(3);
-        clientRequest.setType(MessageTypes.CLIENT_READ_REQUEST);
-        clientRequest.setRequestID(6);
-        byte[] dataToWrite = new byte[TaoConfigs.BLOCKS_IN_BUCKET];
-        Arrays.fill(dataToWrite, (byte) 1);
-        clientRequest.setData(dataToWrite);
 
-        ClientRequest newClientRequest = messageCreator.parseClientRequestBytes(clientRequest.serialize());
-        assertEquals(clientRequest.getBlockID(), newClientRequest.getBlockID());
-        assertEquals(clientRequest.getType(), newClientRequest.getType());
-        assertEquals(clientRequest.getRequestID(), newClientRequest.getRequestID());
-        assertTrue(Arrays.equals(clientRequest.getData(), newClientRequest.getData()));
     }
 
     @Test
     public void testProxyRequest() {
-        MessageCreator messageCreator = new TaoMessageCreator();
-        ProxyRequest proxyRequest = messageCreator.createProxyRequest();
-        proxyRequest.setType(MessageTypes.PROXY_READ_REQUEST);
-        proxyRequest.setPathSize(10);
-        proxyRequest.setPathID(1);
-
-        ProxyRequest newProxyRequest = messageCreator.parseProxyRequestBytes(proxyRequest.serialize());
-        assertEquals(proxyRequest.getType(), newProxyRequest.getType());
-     //   assertEquals(proxyRequest.getPathSize(), newProxyRequest.getPathSize());
-        assertEquals(proxyRequest.getPathID(), newProxyRequest.getPathID());
 
     }
 
     @Test
     public void testProxyWriteRequest() {
-        long systemSize = 246420;
-        TaoConfigs.initConfiguration(systemSize);
+        TaoConfigs.initConfiguration();
 
         KeyGenerator keyGen = null;
         try {

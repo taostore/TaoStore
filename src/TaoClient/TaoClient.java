@@ -1,11 +1,12 @@
 package TaoClient;
 
+import Configuration.ArgumentParser;
 import Configuration.TaoConfigs;
 import Messages.*;
 import TaoProxy.*;
 import com.google.common.primitives.Bytes;
 
-import java.io.DataOutputStream;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -48,20 +49,30 @@ public class TaoClient implements Client {
     // ExecutorService for async reads/writes
     protected ExecutorService mExecutor;
 
-    // Port this client will use
-    public static int CLIENT_PORT = 12337;
-
     // Used for measuring response time
     public static List<Long> mResponseTimes;
+
+    public static Object lock = new Object();
+
+    public static ArrayList<byte[]> listOfBytes = new ArrayList<>();
+
+    public static Map<Long, Integer> returnMap = new HashMap<>();
+
+    public static int LOAD_SIZE = 1000;
+    public static int NUM_DATA_ITEMS = 1000;
+    public static boolean ASYNC_LOAD = false;
 
     /**
      * @brief Default constructor
      */
     public TaoClient() {
         try {
+            // Initialize needed constants
+            TaoConfigs.initConfiguration();
+
             // Get the current client's IP
             String currentIP = InetAddress.getLocalHost().getHostAddress();
-            mClientAddress = new InetSocketAddress(currentIP, CLIENT_PORT);
+            mClientAddress = new InetSocketAddress(currentIP, TaoConfigs.CLIENT_PORT);
 
             // Initialize proxy address
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
@@ -106,9 +117,12 @@ public class TaoClient implements Client {
      */
     public TaoClient(MessageCreator messageCreator) {
         try {
+            // Initialize needed constants
+            TaoConfigs.initConfiguration();
+
             // Get the current client's IP
             String currentIP = InetAddress.getLocalHost().getHostAddress();
-            mClientAddress = new InetSocketAddress(currentIP, CLIENT_PORT);
+            mClientAddress = new InetSocketAddress(currentIP, TaoConfigs.CLIENT_PORT);
 
             // Initialize proxy address
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
@@ -195,6 +209,8 @@ public class TaoClient implements Client {
         // Keep track of requestID and increment it
         long requestID = mRequestID.getAndAdd(1);
 
+
+
         // Create client request
         ClientRequest request = mMessageCreator.createClientRequest();
         request.setBlockID(blockID);
@@ -203,6 +219,9 @@ public class TaoClient implements Client {
 
         // Set additional data depending on message type
         if (type == MessageTypes.CLIENT_READ_REQUEST) {
+            if (ASYNC_LOAD) {
+                returnMap.put(requestID, (int) blockID - 1);
+            }
             request.setType(MessageTypes.CLIENT_READ_REQUEST);
             request.setData(new byte[TaoConfigs.BLOCK_SIZE]);
         } else if (type == MessageTypes.CLIENT_WRITE_REQUEST) {
@@ -361,6 +380,24 @@ public class TaoClient implements Client {
                                     clientAnswer.notifyAll();
                                     TaoLogger.logInfo("Got response to request #" + clientAnswer.getClientRequestID());
                                     mResponseWaitMap.remove(clientAnswer.getClientRequestID());
+
+                                    if (ASYNC_LOAD) {
+                                        // If this is an async load, we need to notify the test that we are done
+                                        if (clientAnswer.getClientRequestID() == NUM_DATA_ITEMS + LOAD_SIZE - 1) {
+                                            synchronized (lock) {
+                                                lock.notifyAll();
+                                            }
+                                        }
+
+                                        // Check for correctness
+                                        if (returnMap.get(clientAnswer.getClientRequestID()) != null) {
+                                            if (!Arrays.equals(listOfBytes.get(returnMap.get(clientAnswer.getClientRequestID())), clientAnswer.getReturnData())) {
+                                                TaoLogger.logError("Read failed for block " + returnMap.get(clientAnswer.getClientRequestID()));
+                                                System.exit(1);
+                                            }
+                                        }
+                                    }
+
                                     serveProxy(channel);
                                 }
                             }
@@ -444,7 +481,79 @@ public class TaoClient implements Client {
      * @brief Method to do a load test on proxy
      * @param client
      */
-    public static void loadTest(Client client) {
+    public static void loadTestAsync(Client client) throws InterruptedException {
+        // Random number generator
+        SecureRandom r = new SecureRandom();
+
+        // Do a write for numDataItems blocks
+        long blockID;
+        // ArrayList<byte[]> listOfBytes = new ArrayList<>();
+        listOfBytes = new ArrayList<>();
+
+        boolean writeStatus;
+        for (int i = 1; i <= NUM_DATA_ITEMS; i++) {
+            TaoLogger.logInfo("Doing a write for block " + i);
+            blockID = i;
+            byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
+            Arrays.fill(dataToWrite, (byte) blockID);
+            listOfBytes.add(dataToWrite);
+
+            writeStatus = client.write(blockID, dataToWrite);
+
+            if (!writeStatus) {
+                TaoLogger.logError("Write failed for block " + i);
+                System.exit(1);
+            } else {
+                TaoLogger.logInfo("Write was successful for " + i);
+            }
+        }
+
+        int readOrWrite;
+        int targetBlock;
+        byte[] z;
+
+        TaoLogger.logForce("Going to start load test");
+        long startTime = System.currentTimeMillis();
+        for (int i = 0; i < 1000; i++) {
+            readOrWrite = r.nextInt(2);
+            targetBlock = r.nextInt(8) + 1;
+
+            if (readOrWrite == 0) {
+                TaoLogger.logInfo("Doing read request #" + ((TaoClient) client).mRequestID.get() + " for block " + targetBlock);
+
+                // Send read and keep track of response time
+                long start = System.currentTimeMillis();
+                client.readAsync(targetBlock);
+                mResponseTimes.add(System.currentTimeMillis() - start);
+
+            } else {
+                TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
+
+                // Send write and keep track of response time
+                long start = System.currentTimeMillis();
+                client.writeAsync(targetBlock, listOfBytes.get(targetBlock - 1));
+                mResponseTimes.add(System.currentTimeMillis() - start);
+            }
+        }
+        synchronized (lock) {
+            lock.wait();
+        }
+
+        long endTime = System.currentTimeMillis();
+        TaoLogger.logForce("Ending load test");
+
+        // Get average response time over 1000 operations
+        long total = 0;
+        for (Long l : mResponseTimes) {
+            total += l;
+        }
+        float average = total / ((float) mResponseTimes.size());
+
+        TaoLogger.logForce("Average response time was " + average + " ms");
+        TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
+    }
+
+    public static void loadTest(Client client) throws InterruptedException {
         // Random number generator
         SecureRandom r = new SecureRandom();
 
@@ -464,16 +573,16 @@ public class TaoClient implements Client {
             Arrays.fill(dataToWrite, (byte) blockID);
             listOfBytes.add(dataToWrite);
 
-//            writeStatus = client.write(blockID, dataToWrite);
-//
-//            if (!writeStatus) {
-//                TaoLogger.logError("Write failed for block " + i);
-//                System.exit(1);
-//            } else {
-//                TaoLogger.logInfo("Write was successful for " + i);
-//            }
+            writeStatus = client.write(blockID, dataToWrite);
 
-        //    requestID++;
+            if (!writeStatus) {
+                TaoLogger.logError("Write failed for block " + i);
+                System.exit(1);
+            } else {
+                TaoLogger.logInfo("Write was successful for " + i);
+            }
+
+                requestID++;
         }
 
         int readOrWrite;
@@ -482,7 +591,7 @@ public class TaoClient implements Client {
 
         TaoLogger.logForce("Going to start load test");
         long startTime = System.currentTimeMillis();
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < LOAD_SIZE; i++) {
             readOrWrite = r.nextInt(2);
             targetBlock = r.nextInt(numDataItems) + 1;
 
@@ -491,30 +600,29 @@ public class TaoClient implements Client {
 
                 // Send read and keep track of response time
                 long start = System.currentTimeMillis();
-                // z = client.read(targetBlock);
-                client.readAsync(targetBlock);
+                z = client.read(targetBlock);
                 mResponseTimes.add(System.currentTimeMillis() - start);
 
-//                if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
-//                    TaoLogger.logError("Read failed for block " + targetBlock);
-//                    System.exit(1);
-//                }
+                if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
+                    TaoLogger.logError("Read failed for block " + targetBlock);
+                    System.exit(1);
+                }
             } else {
                 TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
 
                 // Send write and keep track of response time
                 long start = System.currentTimeMillis();
-                // writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
-                client.writeAsync(targetBlock, listOfBytes.get(targetBlock - 1));
+                writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
                 mResponseTimes.add(System.currentTimeMillis() - start);
 
-//                if (!writeStatus) {
-//                    TaoLogger.logError("Write failed for block " + targetBlock);
-//                    System.exit(1);
-//                }
+                if (!writeStatus) {
+                    TaoLogger.logError("Write failed for block " + targetBlock);
+                    System.exit(1);
+                }
                 requestID++;
             }
         }
+
         long endTime = System.currentTimeMillis();
         TaoLogger.logForce("Ending load test");
 
@@ -531,54 +639,81 @@ public class TaoClient implements Client {
 
     public static void main(String[] args) {
         try {
-            TaoLogger.logLevel = TaoLogger.LOG_INFO;
+            // Parse any passed in args
+            Map<String, String> options = ArgumentParser.parseCommandLineArguments(args);
 
-            long systemSize = 246420;
+            // Determine if the user has their own configuration file name, or just use the default
+            String configFileName = options.getOrDefault("config_file", TaoConfigs.USER_CONFIG_FILE);
+            TaoConfigs.USER_CONFIG_FILE = configFileName;
+
+            // Create client
             TaoClient client = new TaoClient();
 
-            loadTest(client);
+            // Determine if we are load testing or just making an interactive client
+            String runType = options.getOrDefault("runType", "interactive");
 
-            Scanner reader = new Scanner(System.in);
-            while (true) {
-                TaoLogger.logForce("W for write, R for read, P for print, Q for quit");
-                String option = reader.nextLine();
+            if (runType.equals("interactive")) {
+                Scanner reader = new Scanner(System.in);
+                while (true) {
+                    TaoLogger.logForce("W for write, R for read, P for print, Q for quit");
+                    String option = reader.nextLine();
 
-                if (option.equals("Q")) {
-                    break;
-                } else if (option.equals("W")) {
-                    TaoLogger.logForce("Enter block ID to write to");
-                    long blockID = reader.nextLong();
+                    if (option.equals("Q")) {
+                        break;
+                    } else if (option.equals("W")) {
+                        TaoLogger.logForce("Enter block ID to write to");
+                        long blockID = reader.nextLong();
 
-                    TaoLogger.logForce("Enter number to fill in block");
-                    long fill = reader.nextLong();
-                    byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
-                    Arrays.fill(dataToWrite, (byte) fill);
+                        TaoLogger.logForce("Enter number to fill in block");
+                        long fill = reader.nextLong();
+                        byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
+                        Arrays.fill(dataToWrite, (byte) fill);
 
-                    TaoLogger.logForce("Going to send write request for " + blockID);
-                    boolean writeStatus = client.write(blockID, dataToWrite);
+                        TaoLogger.logForce("Going to send write request for " + blockID);
+                        boolean writeStatus = client.write(blockID, dataToWrite);
 
-                    if (!writeStatus) {
-                        TaoLogger.logForce("Write failed");
-                        System.exit(1);
+                        if (!writeStatus) {
+                            TaoLogger.logForce("Write failed");
+                            System.exit(1);
+                        }
+                    } else if (option.equals("R")) {
+                        TaoLogger.logForce("Enter block ID to read from");
+
+                        long blockID = reader.nextLong();
+
+                        TaoLogger.logForce("Going to send read request for " + blockID);
+                        byte[] result = client.read(blockID);
+
+                        TaoLogger.logForce("The result of the read is a block filled with the number " + result[0]);
+                        TaoLogger.logForce("Last number in the block is  " + result[result.length - 1]);
+                    } else if (option.equals("P")) {
+                        client.printSubtree();
                     }
-                } else if (option.equals("R")) {
-                    TaoLogger.logForce("Enter block ID to read from");
-
-                    long blockID = reader.nextLong();
-
-                    TaoLogger.logForce("Going to send read request for " + blockID);
-                    byte[] result = client.read(blockID);
-
-                    TaoLogger.logForce("The result of the read is a block filled with the number " + result[0]);
-                    TaoLogger.logForce("Last number in the block is  " + result[result.length - 1]);
-                } else if (option.equals("P")) {
-                    client.printSubtree();
                 }
+            } else {
+                // Determine if we are doing a load test with synchronous operations, or asynchronous
+                String load_test_type = options.getOrDefault("load_test_type", "synchronous");
+
+                // Determine the amount of operations in the load test
+                String load_size = options.getOrDefault("load_size", Integer.toString(LOAD_SIZE));
+                LOAD_SIZE = Integer.parseInt(load_size);
+
+                // Determine the amount of unique data items that can be operated on
+                String data_set_size = options.getOrDefault("data_set_size", Integer.toString(NUM_DATA_ITEMS));
+                NUM_DATA_ITEMS = Integer.parseInt(data_set_size);
+
+                if (load_test_type.equals("synchronous")) {
+                    loadTest(client);
+                } else {
+                    loadTestAsync(client);
+                }
+
+                System.exit(1);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        System.exit(1);
+        return;
     }
 }

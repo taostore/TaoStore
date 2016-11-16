@@ -1,5 +1,6 @@
 package TaoServer;
 
+import Configuration.ArgumentParser;
 import Configuration.TaoConfigs;
 import Configuration.Utility;
 import Messages.MessageCreator;
@@ -11,7 +12,7 @@ import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousChannelGroup;
@@ -19,6 +20,7 @@ import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
@@ -50,13 +52,13 @@ public class TaoServer {
     /**
      * @brief Constructor
      */
-    public TaoServer(long minServerSize, MessageCreator messageCreator) {
+    public TaoServer(MessageCreator messageCreator) {
         try {
             // Trace
-            TaoLogger.logLevel = TaoLogger.LOG_OFF;
+            TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
 
-            // Initialize needed constants
-            TaoConfigs.initConfiguration(minServerSize);
+            // No passed in properties file, will use defaults
+            TaoConfigs.initConfiguration();
 
             // Calculate the height of the tree that this particular server will store
             mServerTreeHeight = TaoConfigs.STORAGE_SERVER_TREE_HEIGHT;
@@ -79,7 +81,6 @@ public class TaoServer {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
     }
 
     /**
@@ -347,7 +348,7 @@ public class TaoServer {
 
                 // Check message type
                 if (messageType == MessageTypes.PROXY_READ_REQUEST) {
-                    TaoLogger.logForce("Serving a read request");
+                    TaoLogger.logDebug("Serving a read request");
                     // Read the request path
                     byte[] returnPathData = readPath(proxyReq.getPathID());
 
@@ -360,7 +361,7 @@ public class TaoServer {
                     serializedResponse = readResponse.serialize();
                     messageTypeAndLength = Bytes.concat(Ints.toByteArray(MessageTypes.SERVER_RESPONSE), Ints.toByteArray(serializedResponse.length));
                 } else if (messageType == MessageTypes.PROXY_WRITE_REQUEST) {
-                    TaoLogger.logForce("Serving a write request");
+                    TaoLogger.logDebug("Serving a write request");
 
                     // If the write was successful
                     boolean success = true;
@@ -393,7 +394,7 @@ public class TaoServer {
                             encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
 
                             // Write path
-                            TaoLogger.logForce("Going to writepath " + currentPathID + " with timestamp " + proxyReq.getTimestamp());
+                            TaoLogger.logDebug("Going to writepath " + currentPathID + " with timestamp " + proxyReq.getTimestamp());
                             if (!writePath(currentPathID, encryptedPath, timestamp)) {
                                 success = false;
                             }
@@ -411,7 +412,7 @@ public class TaoServer {
                     serializedResponse = writeResponse.serialize();
                     messageTypeAndLength = Bytes.concat(Ints.toByteArray(MessageTypes.SERVER_RESPONSE), Ints.toByteArray(serializedResponse.length));
                 } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
-                    TaoLogger.logForce("Serving an initialize request");
+                    TaoLogger.logDebug("Serving an initialize request");
                     if (mMostRecentTimestamp[0] != 0) {
                         mMostRecentTimestamp = new long[2 << mServerTreeHeight];
                     }
@@ -447,7 +448,7 @@ public class TaoServer {
                         encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
 
                         // Write path
-                        TaoLogger.logForce("Going to writepath " + currentPathID + " with timestamp " + proxyReq.getTimestamp());
+                        TaoLogger.logDebug("Going to writepath " + currentPathID + " with timestamp " + proxyReq.getTimestamp());
                         if (!writePath(currentPathID, encryptedPath, 0)) {
                             success = false;
                         }
@@ -470,12 +471,12 @@ public class TaoServer {
                 ByteBuffer returnMessageBuffer = ByteBuffer.wrap(Bytes.concat(messageTypeAndLength, serializedResponse));
 
                 // Write to proxy
-                TaoLogger.logForce("Going to send response of size " + serializedResponse.length);
+                TaoLogger.logDebug("Going to send response of size " + serializedResponse.length);
                 while (returnMessageBuffer.remaining() > 0) {
                     Future writeToProxy = channel.write(returnMessageBuffer);
                     writeToProxy.get();
                 }
-                TaoLogger.logForce("Sent response");
+                TaoLogger.logDebug("Sent response");
 
                 // Clear buffer
                 returnMessageBuffer = null;
@@ -486,22 +487,27 @@ public class TaoServer {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            try {
+                channel.close();
+            } catch (IOException e1) {
+            }
         }
     }
 
     public static void main(String[] args) {
-        // Make sure user provides a storage size
-        if (args.length != 1) {
-            System.out.println("Please provide desired size of storage in MB");
-            return;
+        try {
+            // Parse any passed in args
+            Map<String, String> options = ArgumentParser.parseCommandLineArguments(args);
+
+            // Determine if the user has their own configuration file name, or just use the default
+            String configFileName = options.getOrDefault("config_file", TaoConfigs.USER_CONFIG_FILE);
+            TaoConfigs.USER_CONFIG_FILE = configFileName;
+
+            // Create server and run
+            TaoServer server = new TaoServer(new TaoMessageCreator());
+            server.run();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        // Convert megabytes to bytes
-        long inBytes = Long.parseLong(args[0]) * 1024 * 1024;
-
-        // Create server and run
-        TaoServer server = new TaoServer(inBytes, new TaoMessageCreator());
-        server.run();
     }
 }
