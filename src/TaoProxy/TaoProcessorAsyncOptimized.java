@@ -69,7 +69,7 @@ public class TaoProcessorAsyncOptimized extends TaoProcessor {
             // Insert request into request map
             // Acquire read lock, as there may be a concurrent pruning of the map
             // Note that pruning is required or empty lists will never be removed from map
-            mRequestMapLock.readLock().lock();
+//            mRequestMapLock.readLock().lock();
 
             // Check to see if a list already exists for this block id, if not create it
             if (mRequestMap.get(req.getBlockID()) == null) {
@@ -84,7 +84,7 @@ public class TaoProcessorAsyncOptimized extends TaoProcessor {
             }
 
             // Release read lock
-            mRequestMapLock.readLock().unlock();
+//            mRequestMapLock.readLock().unlock();
 
             TaoLogger.logInfo("Doing a read for pathID " + pathID);
 

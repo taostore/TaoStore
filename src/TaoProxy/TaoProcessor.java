@@ -32,8 +32,7 @@ public class TaoProcessor implements Processor {
     // Used so that we know when to issue fake reads (fake reads are issued if the list for a requestID is non empty)
     protected Map<Long, List<ClientRequest>> mRequestMap;
 
-    // Lock used to ensure that additions to the request map are not overridden by deletions in writeBack
-    protected final ReentrantReadWriteLock mRequestMapLock = new ReentrantReadWriteLock();
+    protected Map<Long, ReentrantReadWriteLock> mRequestLockMap;
 
     // Map that maps client requests to a ResponseMapEntry, signifying whether or not a request has been received or not
     protected Map<ClientRequest, ResponseMapEntry> mResponseMap;
@@ -128,7 +127,8 @@ public class TaoProcessor implements Processor {
             mStash = new TaoStash();
 
             // Create request map
-            mRequestMap = new HashMap<>();
+            mRequestMap = new ConcurrentHashMap<>();
+            mRequestLockMap = new ConcurrentHashMap<>();
 
             // Create response map
             mResponseMap = new ConcurrentHashMap<>();
@@ -164,7 +164,7 @@ public class TaoProcessor implements Processor {
     @Override
     public void readPath(ClientRequest req) {
         try {
-            TaoLogger.logInfo("Starting a readPath for blockID " + req.getBlockID());
+            TaoLogger.logInfo("Starting a readPath for blockID " + req.getBlockID() + " and request #" + req.getRequestID());
 
             // Create new entry into response map for this request
             mResponseMap.put(req, new ResponseMapEntry());
@@ -173,8 +173,19 @@ public class TaoProcessor implements Processor {
             boolean fakeRead;
             long pathID;
 
+            // We make sure the request list for this map is not null
+            List<ClientRequest> requestList = new ArrayList<>();
+            ReentrantReadWriteLock requestListLock = new ReentrantReadWriteLock();
+            mRequestMap.putIfAbsent(req.getBlockID(), requestList);
+            mRequestLockMap.putIfAbsent(req.getBlockID(), requestListLock);
+
+            // TODO: need a read write lock on each request map, as an answerpath can make a list empty right after and incoming request determines it is a fake read
+            requestList = mRequestMap.get(req.getBlockID());
+            requestListLock = mRequestLockMap.get(req.getBlockID());
+
+            requestListLock.readLock().lock();
             // Check if there is any current request for this block ID
-            if (mRequestMap.get(req.getBlockID()) == null || mRequestMap.get(req.getBlockID()).isEmpty()) {
+            if (requestList.isEmpty()) {
                 // If no other requests for this block ID have been made, it is not a fake read
                 fakeRead = false;
 
@@ -194,27 +205,14 @@ public class TaoProcessor implements Processor {
                 pathID = mCryptoUtil.getRandomPathID();
             }
 
-            // Insert request into request map
-            // Acquire read lock, as there may be a concurrent pruning of the map
-            // Note that pruning is required or empty lists will never be removed from map
-            mRequestMapLock.readLock().lock();
 
-            // Check to see if a list already exists for this block id, if not create it
-            if (mRequestMap.get(req.getBlockID()) == null) {
-                // List does not yet exist, so we create it
-                ArrayList<ClientRequest> newList = new ArrayList<>();
-                newList.add(req);
-                mRequestMap.put(req.getBlockID(), newList);
-            } else {
-                // The list exists, so we just add the request to it
-                mRequestMap.get(req.getBlockID()).add(req);
+            // Add request to request map list
+            TaoLogger.logInfo("Going to insert into old list and blockid " + req.getBlockID() + " for request #" + req.getRequestID() + " and host " + req.getClientAddress().getHostName());
+            requestList.add(req);
 
-            }
+            requestListLock.readLock().unlock();
 
-            // Release read lock
-            mRequestMapLock.readLock().unlock();
-
-            TaoLogger.logInfo("Doing a read for pathID " + pathID);
+            TaoLogger.logForceWithReqID("Doing a read for pathID " + pathID, req.getRequestID());
 
             // Insert request into mPathReqMultiSet to make sure that this path is not deleted before this response
             // returns from server
@@ -417,7 +415,7 @@ public class TaoProcessor implements Processor {
 
     @Override
     public void answerRequest(ClientRequest req, ServerResponse resp, boolean isFakeRead) {
-        TaoLogger.logInfo("Going to answer request with requestID " + req.getRequestID());
+        TaoLogger.logInfo("Going to answer request with requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName());
 
         // Get information about response
         boolean fakeRead = isFakeRead;
@@ -441,6 +439,7 @@ public class TaoProcessor implements Processor {
         // Check if the data for this response entry is not null, which would be the case if the real read returned
         // before this fake read
         if (responseMapEntry.getData() != null) {
+            TaoLogger.logInfo("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " was a fake read, and real read has responded earlier");
             // The real read has already appeared, so we can answer the client
 
             // Send the data to the sequencer
@@ -455,18 +454,21 @@ public class TaoProcessor implements Processor {
 
         // If the data has not yet returned, we check to see if this is the request that caused the real read for this block
         if (! fakeRead) {
+            TaoLogger.logInfo("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " for blockID " + req.getBlockID() + " was a real read, going to do stuff now and list size " + mRequestMap.get(req.getBlockID()).size());
             // Get a list of all the requests that have requested this block ID
             List<ClientRequest> requestList = mRequestMap.get(req.getBlockID());
-
+            ReentrantReadWriteLock requestListLock = mRequestLockMap.get(req.getBlockID());
             // Figure out if this is the first time the element has appeared
             // We need to know this because we need to know if we will be able to find this element in the path or subtree
             boolean elementDoesExist = mPositionMap.getBlockPosition(req.getBlockID()) != -1;
             boolean canPutInPositionMap = true;
 
+            requestListLock.writeLock().lock();
             // Loop through each request in list of requests for this block
             while (!requestList.isEmpty()) {
                 // Get current request that will be processed
                 ClientRequest currentRequest = requestList.remove(0);
+                TaoLogger.logInfo("answerRequest serving current requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName());
                 responseMapEntry = mResponseMap.get(currentRequest);
 
                 // Now we get the data from the desired block
@@ -511,6 +513,7 @@ public class TaoProcessor implements Processor {
                 // NOTE: This is the part that answers all fake reads
                 responseMapEntry.setData(foundData);
                 if (mResponseMap.get(currentRequest).getRetured()) {
+                    TaoLogger.logInfo("1 answerRequest requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName() + " is going to be responded to");
                     // Send the data to sequencer
                     mSequencer.onReceiveResponse(currentRequest, resp, foundData);
 
@@ -524,12 +527,16 @@ public class TaoProcessor implements Processor {
                 }
             }
 
+            requestListLock.writeLock().unlock();
+
             if (canPutInPositionMap) {
                 // Assign block with blockID == req.getBlockID() to a new random path in position map
                 int newPathID = mCryptoUtil.getRandomPathID();
                 TaoLogger.logInfo("Assigning blockID " + req.getBlockID() + " to path " + newPathID);
                 mPositionMap.setBlockPosition(req.getBlockID(), newPathID);
             }
+        } else {
+            TaoLogger.logInfo("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " was a fake read, and real read has not responded yet");
         }
 
         // Now that the response has come back, remove one instance of the requested block ID from mPathReqMultiSet
@@ -643,24 +650,24 @@ public class TaoProcessor implements Processor {
         while (! blockHeap.isEmpty() && level >= 0) {
             // Get block at top of heap
             currentBlock = blockHeap.peek();
-            TaoLogger.logDebug("Looking at blockID " + currentBlock.getBlockID());
+         //   TaoLogger.logDebug("Looking at blockID " + currentBlock.getBlockID());
 
             // Find the path ID that this block maps to
             long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
 
-            TaoLogger.logDebug("The path it is mapped to is " + pid);
-            TaoLogger.logDebug("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
+          //  TaoLogger.logDebug("The path it is mapped to is " + pid);
+//            TaoLogger.logDebug("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
 
             // Check if this block can be inserted at this level
             if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
-                TaoLogger.logDebug("We can insert blockID " + currentBlock.getBlockID() + " at level " + level);
+             //   TaoLogger.logDebug("We can insert blockID " + currentBlock.getBlockID() + " at level " + level);
 
                 // If the block can be inserted at this level, get the bucket
                 Bucket pathBucket = pathToFlush.getBucket(level);
 
                 // Try to add this block into the path and update the bucket's timestamp
                 if (pathBucket.addBlock(currentBlock, mWriteBackCounter)) {
-                    TaoLogger.logDebug("We have successfully inserted blockID " + currentBlock.getBlockID() + " at level " + level);
+               //     TaoLogger.logDebug("We have successfully inserted blockID " + currentBlock.getBlockID() + " at level " + level);
                     // If we have successfully added the block to the bucket, we remove the block from stash
                     mStash.removeBlock(currentBlock);
 
@@ -761,14 +768,15 @@ public class TaoProcessor implements Processor {
         long finalWriteBackTime = writeBackTime;
 
         // Prune the mRequestMap to remove empty lists so it doesn't get to large
-        mRequestMapLock.writeLock().lock();
-        Set<Long> copy = new HashSet<>(mRequestMap.keySet());
-        for (Long blockID : copy) {
-            if (mRequestMap.get(blockID).isEmpty()) {
-                mRequestMap.remove(blockID);
-            }
-        }
-        mRequestMapLock.writeLock().unlock();
+//        mRequestMapLock.writeLock().lock();
+//        Set<Long> copy = new HashSet<>(mRequestMap.keySet());
+//        for (Long blockID : copy) {
+//            if (mRequestMap.get(blockID).isEmpty()) {
+//                TaoLogger.logDebug("RequestMap removing blockid " + blockID);
+//                mRequestMap.remove(blockID);
+//            }
+//        }
+//        mRequestMapLock.writeLock().unlock();
         try {
             // Create a map that will map each InetSockerAddress to a list of paths that will be written to it
             Map<InetSocketAddress, List<Long>> writebackMap = new HashMap<>();

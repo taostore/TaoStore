@@ -105,6 +105,9 @@ public class TaoSequencer implements Sequencer {
             Block b = mBlockCreator.createBlock();
             b.setData(data);
 
+            String isNull = data == null ? "is null" : "is not null";
+            TaoLogger.logForce("Sequencer onReceiveResponse for request #" + req.getRequestID() + " and blockid " + req.getBlockID() + " data " + isNull + " and hostname is " + req.getClientAddress().getHostName());
+
             // Replace empty null block with new block and notify serializationProcedure
             synchronized (mRequestMap) {
                 mRequestMap.replace(req, b);
@@ -130,12 +133,15 @@ public class TaoSequencer implements Sequencer {
                 synchronized (mRequestMap) {
                     check = mRequestMap.get(req).getData();
                     while (check == null) {
+                        TaoLogger.logForce("Waiting for request #" + req.getRequestID() + " for blockid " + req.getBlockID());
                         mRequestMap.wait();
                         check = mRequestMap.get(req).getData();
+                        String isNull = check == null ? "is null" : "is not null";
+                        TaoLogger.logForce("Still Waiting for request #" + req.getRequestID() + " for blockid " + req.getBlockID() + " i think data is " + isNull + " and hostname is " + req.getClientAddress().getHostName() );
                     }
                 }
 
-                TaoLogger.logInfo("1 Sequencer going to send response for " + req.getRequestID());
+                TaoLogger.logInfo("1 Sequencer going to send response for " + req.getRequestID() + " that was for blockid " + req.getBlockID() + " hostname " + req.getClientAddress().getHostName());
 
                 // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;

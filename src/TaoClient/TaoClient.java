@@ -209,8 +209,6 @@ public class TaoClient implements Client {
         // Keep track of requestID and increment it
         long requestID = mRequestID.getAndAdd(1);
 
-
-
         // Create client request
         ClientRequest request = mMessageCreator.createClientRequest();
         request.setBlockID(blockID);
@@ -381,9 +379,15 @@ public class TaoClient implements Client {
                                     TaoLogger.logInfo("Got response to request #" + clientAnswer.getClientRequestID());
                                     mResponseWaitMap.remove(clientAnswer.getClientRequestID());
 
+                                    TaoLogger.logForce("We are about to check for an async load");
                                     if (ASYNC_LOAD) {
+                                        TaoLogger.logForce("Inside an async load");
+                                        long x = NUM_DATA_ITEMS + LOAD_SIZE - 1;
+                                        TaoLogger.logForce("I think x is " + x);
+
                                         // If this is an async load, we need to notify the test that we are done
-                                        if (clientAnswer.getClientRequestID() == NUM_DATA_ITEMS + LOAD_SIZE - 1) {
+                                        if (clientAnswer.getClientRequestID() == (NUM_DATA_ITEMS + LOAD_SIZE - 1)) {
+                                            TaoLogger.logForce("Done with load test async");
                                             synchronized (lock) {
                                                 lock.notifyAll();
                                             }
@@ -396,6 +400,8 @@ public class TaoClient implements Client {
                                                 System.exit(1);
                                             }
                                         }
+                                    } else {
+                                        TaoLogger.logForce("Not an async load");
                                     }
 
                                     serveProxy(channel);
@@ -535,6 +541,7 @@ public class TaoClient implements Client {
                 mResponseTimes.add(System.currentTimeMillis() - start);
             }
         }
+        TaoLogger.logForce("Going to wait");
         synchronized (lock) {
             lock.wait();
         }
@@ -705,6 +712,8 @@ public class TaoClient implements Client {
                 if (load_test_type.equals("synchronous")) {
                     loadTest(client);
                 } else {
+                    TaoLogger.logForce("we are async");
+                    ASYNC_LOAD = true;
                     loadTestAsync(client);
                 }
 
