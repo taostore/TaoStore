@@ -32,6 +32,14 @@ public class TaoProcessor implements Processor {
     // Used so that we know when to issue fake reads (fake reads are issued if the list for a requestID is non empty)
     protected Map<Long, List<ClientRequest>> mRequestMap;
 
+    // A map that maps each blockID to a read/write lock. These locks are used to provide read access to a
+    // list of requests for a blockID (obtained from mRequestMap) during a readPath call, and will be used to grant
+    // write access during an answerRequest call. This is needed because there is a race condition in the presence of
+    // multiple concurrent requests where answerRequest is going through the list of requests in a particular blockID
+    // list, and at the same time an invocation of readPath on the same blockID is occurring. In this scenario, the
+    // readPath method may assign that blockID to be a fake read, and before adding the request to the request list the
+    // answerRequest method will finish execution. Thus the fake read will not be responded to after is is inserted into
+    // the request list
     protected Map<Long, ReentrantReadWriteLock> mRequestLockMap;
 
     // Map that maps client requests to a ResponseMapEntry, signifying whether or not a request has been received or not
@@ -173,17 +181,17 @@ public class TaoProcessor implements Processor {
             boolean fakeRead;
             long pathID;
 
-            // We make sure the request list for this map is not null
+            // We make sure the request list and read/write lock for maps are not null
             List<ClientRequest> requestList = new ArrayList<>();
             ReentrantReadWriteLock requestListLock = new ReentrantReadWriteLock();
             mRequestMap.putIfAbsent(req.getBlockID(), requestList);
             mRequestLockMap.putIfAbsent(req.getBlockID(), requestListLock);
-
-            // TODO: need a read write lock on each request map, as an answerpath can make a list empty right after and incoming request determines it is a fake read
             requestList = mRequestMap.get(req.getBlockID());
             requestListLock = mRequestLockMap.get(req.getBlockID());
 
+            // Acquire a read lock to ensure we do not assign a fake read that will not be answered to
             requestListLock.readLock().lock();
+
             // Check if there is any current request for this block ID
             if (requestList.isEmpty()) {
                 // If no other requests for this block ID have been made, it is not a fake read
@@ -205,14 +213,13 @@ public class TaoProcessor implements Processor {
                 pathID = mCryptoUtil.getRandomPathID();
             }
 
-
             // Add request to request map list
-            TaoLogger.logInfo("Going to insert into old list and blockid " + req.getBlockID() + " for request #" + req.getRequestID() + " and host " + req.getClientAddress().getHostName());
             requestList.add(req);
 
+            // Unlock
             requestListLock.readLock().unlock();
 
-            TaoLogger.logForceWithReqID("Doing a read for pathID " + pathID, req.getRequestID());
+            TaoLogger.logDebug("Doing a read for pathID " + pathID);
 
             // Insert request into mPathReqMultiSet to make sure that this path is not deleted before this response
             // returns from server
@@ -264,6 +271,13 @@ public class TaoProcessor implements Processor {
             byte[] requestData = proxyRequest.serialize();
 
             // Claim the channel
+            // Note that this implementation is optimized for synchronous operations (where the client blocks waiting
+            // for the return of the previous operation before making a new request). Thus we implement the following by
+            // allowing each client to only have one corresponding channel per storage server, having to block requests for
+            // blocks that belong to the same storage server until the original request returns. This is because the
+            // overhead of creating a new channel can be large depending on RTT. For a fully asynchronous implementation,
+            // please check the TaoProcessAsyncOptimized implementation of readPath, where a new channel is made for
+            // each request
             // TODO: AsynchronousSocketChannel can read and write concurrently, so we can make the following code
             // TODO: more efficient
             synchronized (channelToServer) {
@@ -439,7 +453,7 @@ public class TaoProcessor implements Processor {
         // Check if the data for this response entry is not null, which would be the case if the real read returned
         // before this fake read
         if (responseMapEntry.getData() != null) {
-            TaoLogger.logInfo("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " was a fake read, and real read has responded earlier");
+            TaoLogger.logDebug("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " was a fake read, and real read has responded earlier");
             // The real read has already appeared, so we can answer the client
 
             // Send the data to the sequencer
@@ -454,7 +468,7 @@ public class TaoProcessor implements Processor {
 
         // If the data has not yet returned, we check to see if this is the request that caused the real read for this block
         if (! fakeRead) {
-            TaoLogger.logInfo("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " for blockID " + req.getBlockID() + " was a real read, going to do stuff now and list size " + mRequestMap.get(req.getBlockID()).size());
+            TaoLogger.logDebug("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " for blockID " + req.getBlockID() + " was a real read");
             // Get a list of all the requests that have requested this block ID
             List<ClientRequest> requestList = mRequestMap.get(req.getBlockID());
             ReentrantReadWriteLock requestListLock = mRequestLockMap.get(req.getBlockID());
@@ -463,12 +477,14 @@ public class TaoProcessor implements Processor {
             boolean elementDoesExist = mPositionMap.getBlockPosition(req.getBlockID()) != -1;
             boolean canPutInPositionMap = true;
 
+            // Acquire write lock so we do not respond to all requests while accidentally missing a soon to be sent fake read
             requestListLock.writeLock().lock();
+
             // Loop through each request in list of requests for this block
             while (!requestList.isEmpty()) {
                 // Get current request that will be processed
                 ClientRequest currentRequest = requestList.remove(0);
-                TaoLogger.logInfo("answerRequest serving current requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName());
+                TaoLogger.logDebug("answerRequest serving current requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName());
                 responseMapEntry = mResponseMap.get(currentRequest);
 
                 // Now we get the data from the desired block
@@ -513,7 +529,7 @@ public class TaoProcessor implements Processor {
                 // NOTE: This is the part that answers all fake reads
                 responseMapEntry.setData(foundData);
                 if (mResponseMap.get(currentRequest).getRetured()) {
-                    TaoLogger.logInfo("1 answerRequest requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName() + " is going to be responded to");
+                    TaoLogger.logDebug("answerRequest requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName() + " is going to be responded to");
                     // Send the data to sequencer
                     mSequencer.onReceiveResponse(currentRequest, resp, foundData);
 
@@ -527,6 +543,7 @@ public class TaoProcessor implements Processor {
                 }
             }
 
+            // Release lock
             requestListLock.writeLock().unlock();
 
             if (canPutInPositionMap) {
@@ -650,24 +667,18 @@ public class TaoProcessor implements Processor {
         while (! blockHeap.isEmpty() && level >= 0) {
             // Get block at top of heap
             currentBlock = blockHeap.peek();
-         //   TaoLogger.logDebug("Looking at blockID " + currentBlock.getBlockID());
 
             // Find the path ID that this block maps to
             long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
 
-          //  TaoLogger.logDebug("The path it is mapped to is " + pid);
-//            TaoLogger.logDebug("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
-
             // Check if this block can be inserted at this level
             if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
-             //   TaoLogger.logDebug("We can insert blockID " + currentBlock.getBlockID() + " at level " + level);
 
                 // If the block can be inserted at this level, get the bucket
                 Bucket pathBucket = pathToFlush.getBucket(level);
 
                 // Try to add this block into the path and update the bucket's timestamp
                 if (pathBucket.addBlock(currentBlock, mWriteBackCounter)) {
-               //     TaoLogger.logDebug("We have successfully inserted blockID " + currentBlock.getBlockID() + " at level " + level);
                     // If we have successfully added the block to the bucket, we remove the block from stash
                     mStash.removeBlock(currentBlock);
 
@@ -681,7 +692,6 @@ public class TaoProcessor implements Processor {
                 }
             }
 
-            TaoLogger.logDebug("BlockID " + currentBlock.getBlockID() + " could not be inserted into level " + level);
             // If we are unable to add a block at this level, move on to next level
             level--;
         }
@@ -767,16 +777,6 @@ public class TaoProcessor implements Processor {
         // Make another variable for the write back time because Java says so
         long finalWriteBackTime = writeBackTime;
 
-        // Prune the mRequestMap to remove empty lists so it doesn't get to large
-//        mRequestMapLock.writeLock().lock();
-//        Set<Long> copy = new HashSet<>(mRequestMap.keySet());
-//        for (Long blockID : copy) {
-//            if (mRequestMap.get(blockID).isEmpty()) {
-//                TaoLogger.logDebug("RequestMap removing blockid " + blockID);
-//                mRequestMap.remove(blockID);
-//            }
-//        }
-//        mRequestMapLock.writeLock().unlock();
         try {
             // Create a map that will map each InetSockerAddress to a list of paths that will be written to it
             Map<InetSocketAddress, List<Long>> writebackMap = new HashMap<>();
