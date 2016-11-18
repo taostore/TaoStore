@@ -16,7 +16,8 @@ TaoStore
   and thus should be changed with caution
 * For optimal performance, "warm up" system beforehand by doing a healthy amount of operations before measuring throughput, response times, etc.
   * Reasons for this mainly involve needing to initialize several data structures, as well as JIT compiling Java byte code into native code
-  
+* Has dependency on guava.jar https://github.com/google/guava 
+  * Can be downloaded here https://github.com/google/guava/wiki/Release19
   
 **Additional Command Line Arguments:**
 * For TaoClient, TaoProxy, TaoServer
@@ -47,4 +48,3 @@ TaoStore
     * Default is *synchronous_optimized*
     * This option either optimizes the proxy for a synchronous load test or an asynchronous load test
   
-    
