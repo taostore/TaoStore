@@ -9,6 +9,7 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -170,7 +171,7 @@ public class TaoCryptoUtil implements CryptoUtil {
 
     @Override
     public int getRandomPathID() {
-        Random r = new Random();
+        SecureRandom r = new SecureRandom();
         return r.nextInt(1 << TaoConfigs.TREE_HEIGHT);
     }
 }

@@ -14,8 +14,7 @@ import static org.junit.Assert.*;
 public class TaoPathTest {
     @Test
     public void testSerialize() {
-        long systemSize = 246420;
-        TaoConfigs.initConfiguration(systemSize);
+        TaoConfigs.initConfiguration();
 
         // Create empty path
         long pathID = 9;

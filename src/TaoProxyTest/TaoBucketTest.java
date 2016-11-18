@@ -16,8 +16,7 @@ import static org.junit.Assert.*;
 public class TaoBucketTest {
     @Test
     public void testSerialize() {
-        long systemSize = 246420;
-        TaoConfigs.initConfiguration(systemSize);
+        TaoConfigs.initConfiguration();
 
         // Create empty bucket
         TaoBucket testBucket = new TaoBucket();

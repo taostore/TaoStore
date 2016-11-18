@@ -9,6 +9,7 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Bytes;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -31,8 +32,15 @@ public class TaoProcessor implements Processor {
     // Used so that we know when to issue fake reads (fake reads are issued if the list for a requestID is non empty)
     protected Map<Long, List<ClientRequest>> mRequestMap;
 
-    // Lock used to ensure that additions to the request map are not overridden by deletions in writeBack
-    protected final ReentrantReadWriteLock mRequestMapLock = new ReentrantReadWriteLock();
+    // A map that maps each blockID to a read/write lock. These locks are used to provide read access to a
+    // list of requests for a blockID (obtained from mRequestMap) during a readPath call, and will be used to grant
+    // write access during an answerRequest call. This is needed because there is a race condition in the presence of
+    // multiple concurrent requests where answerRequest is going through the list of requests in a particular blockID
+    // list, and at the same time an invocation of readPath on the same blockID is occurring. In this scenario, the
+    // readPath method may assign that blockID to be a fake read, and before adding the request to the request list the
+    // answerRequest method will finish execution. Thus the fake read will not be responded to after is is inserted into
+    // the request list
+    protected Map<Long, ReentrantReadWriteLock> mRequestLockMap;
 
     // Map that maps client requests to a ResponseMapEntry, signifying whether or not a request has been received or not
     protected Map<ClientRequest, ResponseMapEntry> mResponseMap;
@@ -90,9 +98,6 @@ public class TaoProcessor implements Processor {
     // This boolean will indicate if the channel for that storage server (for this client) is being used for I/O
     protected Map<InetSocketAddress, Map<InetSocketAddress, Boolean>> mAsyncProxyToServerTakenMap;
 
-    // An InetSocketAddress that the proxy will use on writebacks
-    protected InetSocketAddress mSelfAddress;
-
     /**
      * @brief Constructor
      * @param proxy
@@ -130,7 +135,8 @@ public class TaoProcessor implements Processor {
             mStash = new TaoStash();
 
             // Create request map
-            mRequestMap = new HashMap<>();
+            mRequestMap = new ConcurrentHashMap<>();
+            mRequestLockMap = new ConcurrentHashMap<>();
 
             // Create response map
             mResponseMap = new ConcurrentHashMap<>();
@@ -158,11 +164,6 @@ public class TaoProcessor implements Processor {
             // Initialize maps
             mProxyToServerChannelMap = new ConcurrentHashMap<>();
             mAsyncProxyToServerTakenMap = new ConcurrentHashMap<>();
-
-            // Make an InetSocketAddress for proxy and then make connections for proxy to use for writeback
-            String currentIP = InetAddress.getLocalHost().getHostAddress();
-            mSelfAddress = new InetSocketAddress(currentIP, TaoConfigs.PROXY_PORT + 1);
-            makeInitialConnections(mSelfAddress);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -171,7 +172,7 @@ public class TaoProcessor implements Processor {
     @Override
     public void readPath(ClientRequest req) {
         try {
-            TaoLogger.logInfo("Starting a readPath for blockID " + req.getBlockID());
+            TaoLogger.logInfo("Starting a readPath for blockID " + req.getBlockID() + " and request #" + req.getRequestID());
 
             // Create new entry into response map for this request
             mResponseMap.put(req, new ResponseMapEntry());
@@ -180,8 +181,19 @@ public class TaoProcessor implements Processor {
             boolean fakeRead;
             long pathID;
 
+            // We make sure the request list and read/write lock for maps are not null
+            List<ClientRequest> requestList = new ArrayList<>();
+            ReentrantReadWriteLock requestListLock = new ReentrantReadWriteLock();
+            mRequestMap.putIfAbsent(req.getBlockID(), requestList);
+            mRequestLockMap.putIfAbsent(req.getBlockID(), requestListLock);
+            requestList = mRequestMap.get(req.getBlockID());
+            requestListLock = mRequestLockMap.get(req.getBlockID());
+
+            // Acquire a read lock to ensure we do not assign a fake read that will not be answered to
+            requestListLock.readLock().lock();
+
             // Check if there is any current request for this block ID
-            if (mRequestMap.get(req.getBlockID()) == null || mRequestMap.get(req.getBlockID()).isEmpty()) {
+            if (requestList.isEmpty()) {
                 // If no other requests for this block ID have been made, it is not a fake read
                 fakeRead = false;
 
@@ -201,38 +213,19 @@ public class TaoProcessor implements Processor {
                 pathID = mCryptoUtil.getRandomPathID();
             }
 
-            // Insert request into request map
-            // Acquire read lock, as there may be a concurrent pruning of the map
-            // Note that pruning is required or empty lists will never be removed from map
-            mRequestMapLock.readLock().lock();
+            // Add request to request map list
+            requestList.add(req);
 
-            // Check to see if a list already exists for this block id, if not create it
-            if (mRequestMap.get(req.getBlockID()) == null) {
-                // List does not yet exist, so we create it
-                ArrayList<ClientRequest> newList = new ArrayList<>();
-                newList.add(req);
-                mRequestMap.put(req.getBlockID(), newList);
-            } else {
-                // The list exists, so we just add the request to it
-                mRequestMap.get(req.getBlockID()).add(req);
+            // Unlock
+            requestListLock.readLock().unlock();
 
-            }
-
-            // Release read lock
-            mRequestMapLock.readLock().unlock();
-
-            TaoLogger.logInfo("Doing a read for pathID " + pathID);
+            TaoLogger.logDebug("Doing a read for pathID " + pathID);
 
             // Insert request into mPathReqMultiSet to make sure that this path is not deleted before this response
             // returns from server
             mPathReqMultiSet.add(pathID);
 
             // Create effectively final variables to use for inner classes
-            if (mRelativeLeafMapper == null) {
-                TaoLogger.logDebug("This thing is null");
-            } else {
-                TaoLogger.logDebug("This is not null");
-            }
             long relativeFinalPathID = mRelativeLeafMapper.get(pathID);
             long absoluteFinalPathID = pathID;
 
@@ -273,6 +266,13 @@ public class TaoProcessor implements Processor {
             byte[] requestData = proxyRequest.serialize();
 
             // Claim the channel
+            // Note that this implementation is optimized for synchronous operations (where the client blocks waiting
+            // for the return of the previous operation before making a new request). Thus we implement the following by
+            // allowing each client to only have one corresponding channel per storage server, having to block requests for
+            // blocks that belong to the same storage server until the original request returns. This is because the
+            // overhead of creating a new channel can be large depending on RTT. For a fully asynchronous implementation,
+            // please check the TaoProcessAsyncOptimized implementation of readPath, where a new channel is made for
+            // each request
             // TODO: AsynchronousSocketChannel can read and write concurrently, so we can make the following code
             // TODO: more efficient
             synchronized (channelToServer) {
@@ -302,7 +302,6 @@ public class TaoProcessor implements Processor {
                         // Asynchronously read response type and size from server
                         ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
 
-                       // TaoLogger.logForce("Waiting to receive header from server");
                         channelToServer.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
                             @Override
                             public void completed(Integer result, Void attachment) {
@@ -311,8 +310,6 @@ public class TaoProcessor implements Processor {
                                     channelToServer.read(messageTypeAndSize, null, this);
                                     return;
                                 }
-
-                                //TaoLogger.logForce("Done receiving header server");
 
                                 // Flip the byte buffer for reading
                                 messageTypeAndSize.flip();
@@ -324,7 +321,6 @@ public class TaoProcessor implements Processor {
 
                                 // Asynchronously read response from server
                                 ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
-                               // TaoLogger.logForce("Waiting to receive path from server");
                                 channelToServer.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
                                     @Override
                                     public void completed(Integer result, Void attachment) {
@@ -334,7 +330,6 @@ public class TaoProcessor implements Processor {
                                             return;
                                         }
 
-                                      //  TaoLogger.logForce("Received path from server");
                                         // Flip the byte buffer for reading
                                         pathInBytes.flip();
 
@@ -429,7 +424,7 @@ public class TaoProcessor implements Processor {
 
     @Override
     public void answerRequest(ClientRequest req, ServerResponse resp, boolean isFakeRead) {
-        TaoLogger.logInfo("Going to answer request with requestID " + req.getRequestID());
+        TaoLogger.logInfo("Going to answer request with requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName());
 
         // Get information about response
         boolean fakeRead = isFakeRead;
@@ -453,6 +448,7 @@ public class TaoProcessor implements Processor {
         // Check if the data for this response entry is not null, which would be the case if the real read returned
         // before this fake read
         if (responseMapEntry.getData() != null) {
+            TaoLogger.logDebug("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " was a fake read, and real read has responded earlier");
             // The real read has already appeared, so we can answer the client
 
             // Send the data to the sequencer
@@ -467,18 +463,24 @@ public class TaoProcessor implements Processor {
 
         // If the data has not yet returned, we check to see if this is the request that caused the real read for this block
         if (! fakeRead) {
+            TaoLogger.logDebug("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " for blockID " + req.getBlockID() + " was a real read");
             // Get a list of all the requests that have requested this block ID
             List<ClientRequest> requestList = mRequestMap.get(req.getBlockID());
+            ReentrantReadWriteLock requestListLock = mRequestLockMap.get(req.getBlockID());
 
             // Figure out if this is the first time the element has appeared
             // We need to know this because we need to know if we will be able to find this element in the path or subtree
             boolean elementDoesExist = mPositionMap.getBlockPosition(req.getBlockID()) != -1;
             boolean canPutInPositionMap = true;
 
+            // Acquire write lock so we do not respond to all requests while accidentally missing a soon to be sent fake read
+            requestListLock.writeLock().lock();
+
             // Loop through each request in list of requests for this block
             while (!requestList.isEmpty()) {
                 // Get current request that will be processed
                 ClientRequest currentRequest = requestList.remove(0);
+                TaoLogger.logDebug("answerRequest serving current requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName());
                 responseMapEntry = mResponseMap.get(currentRequest);
 
                 // Now we get the data from the desired block
@@ -523,6 +525,7 @@ public class TaoProcessor implements Processor {
                 // NOTE: This is the part that answers all fake reads
                 responseMapEntry.setData(foundData);
                 if (mResponseMap.get(currentRequest).getRetured()) {
+                    TaoLogger.logDebug("answerRequest requestID " + currentRequest.getRequestID() + " from host " + currentRequest.getClientAddress().getHostName() + " is going to be responded to");
                     // Send the data to sequencer
                     mSequencer.onReceiveResponse(currentRequest, resp, foundData);
 
@@ -536,12 +539,17 @@ public class TaoProcessor implements Processor {
                 }
             }
 
+            // Release lock
+            requestListLock.writeLock().unlock();
+
             if (canPutInPositionMap) {
                 // Assign block with blockID == req.getBlockID() to a new random path in position map
                 int newPathID = mCryptoUtil.getRandomPathID();
                 TaoLogger.logInfo("Assigning blockID " + req.getBlockID() + " to path " + newPathID);
                 mPositionMap.setBlockPosition(req.getBlockID(), newPathID);
             }
+        } else {
+            TaoLogger.logInfo("answerRequest requestID " + req.getRequestID() + " from host " + req.getClientAddress().getHostName() + " was a fake read, and real read has not responded yet");
         }
 
         // Now that the response has come back, remove one instance of the requested block ID from mPathReqMultiSet
@@ -555,8 +563,11 @@ public class TaoProcessor implements Processor {
      * @return the data from block
      */
     public byte[] getDataFromBlock(long blockID) {
-        TaoLogger.logForce("Trying to get data for blockID " + blockID);
-        TaoLogger.logForce("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
+        TaoLogger.logDebug("Trying to get data for blockID " + blockID);
+        TaoLogger.logDebug("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
+
+        // We will look 10 times before failing
+        int checkNum = 0;
 
         // Due to multiple threads moving blocks around, we need to run this in a loop
         while (true) {
@@ -565,36 +576,47 @@ public class TaoProcessor implements Processor {
 
             if (targetBucket != null) {
                 // If we found the bucket in the subtree, we can attempt to get the data from the block in bucket
-                TaoLogger.logForce("Bucket containing block found in subtree");
+                TaoLogger.logDebug("Bucket containing block found in subtree");
                 byte[] data = targetBucket.getDataFromBlock(blockID);
 
                 // Check if this data is not null
                 if (data != null) {
                     // If not null, we return the data
-                    TaoLogger.logForce("Returning data for block " + blockID);
+                    TaoLogger.logDebug("Returning data for block " + blockID);
                     return data;
                 } else {
                     // If null, we look again
-                    TaoLogger.logForce("scuba But bucket does not have the data we want");
-                    System.exit(1);
+                    TaoLogger.logDebug("scuba But bucket does not have the data we want");
+
+                    // System.exit(1);
                     // continue;
                 }
             } else {
                 // If the block wasn't in the subtree, it should be in the stash
-                TaoLogger.logForce("Cannot find in subtree");
+                TaoLogger.logDebug("Cannot find in subtree");
                 Block targetBlock = mStash.getBlock(blockID);
 
                 if (targetBlock != null) {
                     // If we found the block in the stash, return the data
-                    TaoLogger.logForce("Returning data for block " + blockID);
+                    TaoLogger.logDebug("Returning data for block " + blockID);
                     return targetBlock.getData();
                 } else {
                     // If we did not find the block, we LOOK AGAIN
-                    TaoLogger.logForce("scuba Cannot find in subtree or stash");
-                    System.exit(1);
+                    TaoLogger.logDebug("scuba Cannot find in subtree or stash");
+                    // System.exit(1);
                     // continue;
                 }
             }
+
+            // If we've looped 10 times, probably can't find it
+            // TODO: We should not get to this point, and thus indicates a coding error
+            if (checkNum == 10) {
+                TaoLogger.logError("Cannot find data for block " + blockID);
+                System.exit(1);
+            }
+
+            // Increment
+            checkNum++;
         }
     }
 
@@ -655,24 +677,18 @@ public class TaoProcessor implements Processor {
         while (! blockHeap.isEmpty() && level >= 0) {
             // Get block at top of heap
             currentBlock = blockHeap.peek();
-            TaoLogger.logDebug("Looking at blockID " + currentBlock.getBlockID());
 
             // Find the path ID that this block maps to
             long pid = mPositionMap.getBlockPosition(currentBlock.getBlockID());
 
-            TaoLogger.logDebug("The path it is mapped to is " + pid);
-            TaoLogger.logDebug("The target path is " + pathID + " and the greatest common level is " + Utility.getGreatestCommonLevel(pathID, pid));
-
             // Check if this block can be inserted at this level
             if (Utility.getGreatestCommonLevel(pathID, pid) == level) {
-                TaoLogger.logDebug("We can insert blockID " + currentBlock.getBlockID() + " at level " + level);
 
                 // If the block can be inserted at this level, get the bucket
                 Bucket pathBucket = pathToFlush.getBucket(level);
 
                 // Try to add this block into the path and update the bucket's timestamp
                 if (pathBucket.addBlock(currentBlock, mWriteBackCounter)) {
-                    TaoLogger.logDebug("We have successfully inserted blockID " + currentBlock.getBlockID() + " at level " + level);
                     // If we have successfully added the block to the bucket, we remove the block from stash
                     mStash.removeBlock(currentBlock);
 
@@ -686,7 +702,6 @@ public class TaoProcessor implements Processor {
                 }
             }
 
-            TaoLogger.logDebug("BlockID " + currentBlock.getBlockID() + " could not be inserted into level " + level);
             // If we are unable to add a block at this level, move on to next level
             level--;
         }
@@ -772,15 +787,6 @@ public class TaoProcessor implements Processor {
         // Make another variable for the write back time because Java says so
         long finalWriteBackTime = writeBackTime;
 
-        // Prune the mRequestMap to remove empty lists so it doesn't get to large
-        mRequestMapLock.writeLock().lock();
-        Set<Long> copy = new HashSet<>(mRequestMap.keySet());
-        for (Long blockID : copy) {
-            if (mRequestMap.get(blockID).isEmpty()) {
-                mRequestMap.remove(blockID);
-            }
-        }
-        mRequestMapLock.writeLock().unlock();
         try {
             // Create a map that will map each InetSockerAddress to a list of paths that will be written to it
             Map<InetSocketAddress, List<Long>> writebackMap = new HashMap<>();
@@ -874,137 +880,120 @@ public class TaoProcessor implements Processor {
                     try {
                         TaoLogger.logDebug("Going to do writeback for server " + serverIndexFinal);
 
-                        // Get writeback channel map and then get the correct channel
-                        Map<InetSocketAddress, AsynchronousSocketChannel> writebackChannelMap = mProxyToServerChannelMap.get(mSelfAddress);
-                        AsynchronousSocketChannel channel =writebackChannelMap.get(serverAddr);
+                        // Create channel and connect to server
+                        AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
+                        Future connection = channel.connect(serverAddr);
+                        connection.get();
 
-                        // Get the serverTakenMap for proxy, which will be used as a lock for the above channel
-                        // in the case that another writeback occurs while this one is ongoing
-                        Map<InetSocketAddress, Boolean> serverTakenMap = mAsyncProxyToServerTakenMap.get(mSelfAddress);
+                        // First we send the message type to the server along with the size of the message
+                        ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
+                        Future sendHeader;
+                        while (messageType.remaining() > 0) {
+                            sendHeader = channel.write(messageType);
+                            sendHeader.get();
+                        }
+                        messageType = null;
 
-                        synchronized (channel) {
-                            // Check to see if the channel is being used. If it is, wait
-                            while (serverTakenMap.get(serverAddr)) {
-                                channel.wait();
-                            }
+                        // Send writeback paths
+                        ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
+                        Future sendMessage;
+                        while (message.remaining() > 0) {
+                            sendMessage = channel.write(message);
+                            sendMessage.get();
+                        }
+                        message = null;
+                        TaoLogger.logDebug("Sent info, now waiting to listen for server " + serverIndexFinal);
 
-                            // Mark the channel serving this server as taken so no other thread can use the channel while
-                            // channel is being used
-                            serverTakenMap.replace(serverAddr, true);
+                        // Listen for server response
+                        ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
+                        channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
+                            @Override
+                            public void completed(Integer result, Void attachment) {
+                                // Flip the byte buffer for reading
+                                messageTypeAndSize.flip();
 
-                            // First we send the message type to the server along with the size of the message
-                            ByteBuffer messageType = MessageUtility.createMessageHeaderBuffer(MessageTypes.PROXY_WRITE_REQUEST, encryptedWriteBackPaths.length);
-                            Future sendHeader;
-                            while (messageType.remaining() > 0) {
-                                sendHeader = channel.write(messageType);
-                                sendHeader.get();
-                            }
-                            messageType = null;
+                                // Parse the message type and size from server
+                                int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
+                                int messageType = typeAndLength[0];
+                                int messageLength = typeAndLength[1];
 
-                            // Send writeback paths
-                            ByteBuffer message = ByteBuffer.wrap(encryptedWriteBackPaths);
-                            Future sendMessage;
-                            while (message.remaining() > 0) {
-                                sendMessage = channel.write(message);
-                                sendMessage.get();
-                            }
-                            message = null;
-                            TaoLogger.logDebug("Sent info, now waiting to listen for server " + serverIndexFinal);
+                                // Determine behavior based on response
+                                if (messageType == MessageTypes.SERVER_RESPONSE) {
+                                    // Read the response
+                                    ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
+                                    channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
 
-                            // Listen for server response
-                            ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
-                            channel.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
-                                @Override
-                                public void completed(Integer result, Void attachment) {
-                                    // Flip the byte buffer for reading
-                                    messageTypeAndSize.flip();
+                                        @Override
+                                        public void completed(Integer result, Void attachment) {
+                                            // Make sure we read the entire message
+                                            while (messageResponse.remaining() > 0) {
+                                                channel.read(messageResponse);
+                                            }
 
-                                    // Parse the message type and size from server
-                                    int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
-                                    int messageType = typeAndLength[0];
-                                    int messageLength = typeAndLength[1];
+                                            try {
+                                                channel.close();
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
 
-                                    // Determine behavior based on response
-                                    if (messageType == MessageTypes.SERVER_RESPONSE) {
-                                        // Read the response
-                                        ByteBuffer messageResponse = ByteBuffer.allocate(messageLength);
-                                        channel.read(messageResponse, null, new CompletionHandler<Integer, Void>() {
+                                            // Flip byte buffer for reading
+                                            messageResponse.flip();
 
-                                            @Override
-                                            public void completed(Integer result, Void attachment) {
-                                                // Make sure we read the entire message
-                                                while (messageResponse.remaining() > 0) {
-                                                    channel.read(messageResponse);
-                                                }
+                                            // Get data from response
+                                            byte[] serialized = new byte[messageLength];
+                                            messageResponse.get(serialized);
 
-                                                // Release the channel
-                                                synchronized (channel) {
-                                                    serverTakenMap.replace(serverAddr, false);
-                                                    channel.notifyAll();
-                                                }
+                                            // Create ServerResponse based on data
+                                            ServerResponse response = mMessageCreator.createServerResponse();
+                                            response.initFromSerialized(serialized);
 
-                                                // Flip byte buffer for reading
-                                                messageResponse.flip();
+                                            // Check to see if the write succeeded or not
+                                            if (response.getWriteStatus()) {
+                                                // Acquire return lock
+                                                synchronized (returnLock) {
+                                                    // Set that this server did return
+                                                    serverDidReturn[serverIndexFinal] = true;
 
-                                                // Get data from response
-                                                byte[] serialized = new byte[messageLength];
-                                                messageResponse.get(serialized);
-
-                                                // Create ServerResponse based on data
-                                                ServerResponse response = mMessageCreator.createServerResponse();
-                                                response.initFromSerialized(serialized);
-
-                                                // Check to see if the write succeeded or not
-                                                if (response.getWriteStatus()) {
-                                                    // Acquire return lock
-                                                    synchronized (returnLock) {
-                                                        // Set that this server did return
-                                                        serverDidReturn[serverIndexFinal] = true;
-
-                                                        // Check if all the servers have returned
-                                                        boolean allReturn = true;
-                                                        for (int n = 0; n < serverDidReturn.length; n++) {
-                                                            if (!serverDidReturn[n]) {
-                                                                allReturn = false;
-                                                                break;
-                                                            }
-                                                        }
-
-                                                        // If all the servers have successfully responded, we can delete nodes from subtree
-                                                        if (allReturn) {
-                                                            // Iterate through every path that was written, check if there are any nodes
-                                                            // we can delete
-                                                            for (Long pathID : allWriteBackIDs) {
-                                                                // Upon response, delete all nodes in subtree whose timestamp
-                                                                // is <= timeStamp, and are not in mPathReqMultiSet
-                                                                // TODO: should pass in entire mPathReqMultiSet instead
-                                                                Set<Long> set = new HashSet<>();
-                                                                for (Long l : mPathReqMultiSet.elementSet()) {
-                                                                    set.add(l);
-                                                                }
-                                                                mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
-                                                            }
+                                                    // Check if all the servers have returned
+                                                    boolean allReturn = true;
+                                                    for (int n = 0; n < serverDidReturn.length; n++) {
+                                                        if (!serverDidReturn[n]) {
+                                                            allReturn = false;
+                                                            break;
                                                         }
                                                     }
-                                                } else {
-                                                    // TODO: what happens on fail?
+
+                                                    // If all the servers have successfully responded, we can delete nodes from subtree
+                                                    if (allReturn) {
+                                                        // Iterate through every path that was written, check if there are any nodes
+                                                        // we can delete
+                                                        for (Long pathID : allWriteBackIDs) {
+                                                            // Upon response, delete all nodes in subtree whose timestamp
+                                                            // is <= timeStamp, and are not in mPathReqMultiSet
+                                                            // TODO: should pass in entire mPathReqMultiSet instead
+                                                            Set<Long> set = new HashSet<>();
+                                                            for (Long l : mPathReqMultiSet.elementSet()) {
+                                                                set.add(l);
+                                                            }
+                                                            mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
+                                                        }
+                                                    }
                                                 }
+                                            } else {
                                             }
+                                        }
 
-                                            @Override
-                                            public void failed(Throwable exc, Void attachment) {
-                                                // TODO: Implement?
-                                            }
-                                        });
-                                    }
+                                        @Override
+                                        public void failed(Throwable exc, Void attachment) {
+                                        }
+                                    });
                                 }
+                            }
 
-                                @Override
-                                public void failed(Throwable exc, Void attachment) {
-                                    // TODO: Implement?
-                                }
-                            });
-                        }
+                            @Override
+                            public void failed(Throwable exc, Void attachment) {
+                            }
+                        });
                     } catch (Exception e) {
                         e.printStackTrace();
                     }

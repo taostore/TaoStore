@@ -142,6 +142,11 @@ public class TaoClientRequest implements ClientRequest {
             return false;
         }
 
+        // If two requests have the same request ID, check to make sure they are not from different hosts
+        if (! mClientAddress.getHostName().equals(rhs.getClientAddress().getHostName())) {
+            return false;
+        }
+
         return true;
     }
 

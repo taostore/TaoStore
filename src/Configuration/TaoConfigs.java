@@ -2,42 +2,54 @@ package Configuration;
 
 import TaoProxy.TaoLogger;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @brief Configurations for TaoStore
  */
 public class TaoConfigs {
+    // Name of file that users can provide to change the below defaults
+    public static String USER_CONFIG_FILE = "config.properties";
+
     // Name of the file each storage server will store information too
-    public static final String ORAM_FILE = "oram.txt";
+    public static String ORAM_FILE;
 
     // Amount of threads to be used for asynchronous I/O
-    public static final int PROXY_THREAD_COUNT = 25;
+    public static int PROXY_THREAD_COUNT;
 
     // The writeback threshold for the proxy
-    public static int WRITE_BACK_THRESHOLD = 40;
+    public static int WRITE_BACK_THRESHOLD;
+
+    // Port to be used by client
+    public static int CLIENT_PORT;
 
     // Port used by proxy
-    public static String PROXY_HOSTNAME = "10.138.0.6";
-    public static int PROXY_PORT = 12339;
+    public static String PROXY_HOSTNAME;
+    public static int PROXY_PORT;
 
     // The storage size of each block in bytes
-    public static final int BLOCK_SIZE = 4096;
+    public static int BLOCK_SIZE;
 
     // Amount of blocks that will be put in a bucket
-    public static final int BLOCKS_IN_BUCKET = 4;
+    public static int BLOCKS_IN_BUCKET;
 
     // The size of the meta information for each block
     // blockID = 8 bytes
-    public static final int BLOCK_META_DATA_SIZE = 8;
+    public static int BLOCK_META_DATA_SIZE;
 
     // The total size in bytes of each block
-    public static final int TOTAL_BLOCK_SIZE = BLOCK_META_DATA_SIZE + BLOCK_SIZE;
+    public static int TOTAL_BLOCK_SIZE;
 
     // The size of the initialization vector for encryption
-    public static final int IV_SIZE = 16;
+    public static int IV_SIZE;
 
     // The size of the bucket in bytes, to be determined when initConfiguration is called
     public static int BUCKET_SIZE;
@@ -61,23 +73,103 @@ public class TaoConfigs {
     public static long STORAGE_SERVER_SIZE;
 
     // Port used by servers
-    public static int SERVER_PORT = 12338;
+    public static int SERVER_PORT;
 
     // The list of storage servers to be used by proxy
-    public static List<InetSocketAddress> PARTITION_SERVERS =
-            Arrays.asList(new InetSocketAddress("10.128.0.2", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.3", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.4", SERVER_PORT),
-                    new InetSocketAddress("10.128.0.5", SERVER_PORT));
+    public static List<InetSocketAddress> PARTITION_SERVERS = new ArrayList<>();
 
-    // Used for testing
-    public static List<InetSocketAddress> TEST_PARTITION_SERVERS = Arrays.asList(new InetSocketAddress("localhost", SERVER_PORT));
+    // We only want to initialize constants once per run
+    public static AtomicBoolean mHasBeenInitialized = new AtomicBoolean();
 
     /**
-     * @brief Static method to initialize constants
+     * @brief Initialize configurations that user can set
+     */
+    public static void initConfiguration() {
+        try {
+            // Create the configuration file if it doesn't exist
+            File configFile = new File(USER_CONFIG_FILE);
+            configFile.createNewFile();
+            InputStream input = new FileInputStream(configFile);
+
+            // Get the default properties
+            Properties defaultProp = new Properties();
+            InputStream inputDefault = TaoConfigs.class.getResourceAsStream("TaoDefaultConfigs");
+            defaultProp.load(inputDefault);
+
+            // Create the user property file
+            Properties properties = new Properties(defaultProp);
+            configFile.createNewFile();
+            properties.load(input);
+
+            // If we have already initialized the configurations, we don't want to do it again
+            if (!mHasBeenInitialized.getAndSet(true)) {
+
+                // Assign the file that will be used for ORAM storage
+                ORAM_FILE = properties.getProperty("oram_file");
+
+                // Assign how many threads will be used on the proxy
+                String proxy_thread_count = properties.getProperty("proxy_thread_count");
+                PROXY_THREAD_COUNT = Integer.parseInt(proxy_thread_count);
+
+                // Assign write back threshold
+                String write_back_threshold = properties.getProperty("write_back_threshold");
+                WRITE_BACK_THRESHOLD = Integer.parseInt(write_back_threshold);
+
+                // Assign client port_name
+                String client_port = properties.getProperty("client_port");
+                CLIENT_PORT = Integer.parseInt(client_port);
+
+                // Assign proxy hostname
+                PROXY_HOSTNAME = properties.getProperty("proxy_hostname");
+
+                // Assign proxy port number
+                String proxy_port = properties.getProperty("proxy_port");
+                PROXY_PORT = Integer.parseInt(proxy_port);
+
+                // Assign block size without any meta data
+                String block_size = properties.getProperty("block_size");
+                BLOCK_SIZE = Integer.parseInt(block_size);
+
+                // Assign how many blocks will be in a bucket
+                String blocks_in_bucket = properties.getProperty("blocks_in_bucket");
+                BLOCKS_IN_BUCKET = Integer.parseInt(blocks_in_bucket);
+
+                // Assign the size of a block's metadata
+                String block_meta_data_size = properties.getProperty("block_meta_data_size");
+                BLOCK_META_DATA_SIZE = Integer.parseInt(block_meta_data_size);
+
+                // Assign the size of initialization vector to be used for encryption
+                String iv_size = properties.getProperty("iv_size");
+                IV_SIZE = Integer.parseInt(iv_size);
+
+                // Assign server port number
+                String server_port = properties.getProperty("server_port");
+                SERVER_PORT = Integer.parseInt(server_port);
+
+                // Make list of all the storage servers
+                String num_storage_servers = properties.getProperty("num_storage_servers");
+                int num_servers = Integer.parseInt(num_storage_servers);
+
+                PARTITION_SERVERS = new ArrayList<>();
+                for (int i = 0; i < num_servers; i++) {
+                    String serverName = properties.getProperty("storage_hostname" + Integer.toString(i + 1));
+                    PARTITION_SERVERS.add(new InetSocketAddress(serverName, SERVER_PORT));
+                }
+
+                // Calculate other configurations based on the above configs as well as the minimum required storage size
+                long min_server_size = Long.parseLong(properties.getProperty("min_server_size"));
+                initConfiguration(min_server_size * 1024 * 1024);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * @brief Private static method to initialize constants based on user defined or default properties
      * @param minServerSize
      */
-    public static void initConfiguration(long minServerSize) {
+    private static void initConfiguration(long minServerSize) {
         // First make sure that the amount of storage servers is a power of two
         int numServers = PARTITION_SERVERS.size();
         if ((numServers & -numServers) != numServers) {
@@ -85,6 +177,9 @@ public class TaoConfigs {
             TaoLogger.logError("The amount of storage servers must be a power of two");
             System.exit(1);
         }
+
+        // Determine the total size of a block based on user configs
+        TOTAL_BLOCK_SIZE = BLOCK_META_DATA_SIZE + BLOCK_SIZE;
 
         // Calculate the size of a bucket based on how big blocks are
         BUCKET_SIZE = calculateBucketSize();

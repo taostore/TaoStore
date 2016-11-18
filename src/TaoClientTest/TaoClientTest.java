@@ -18,17 +18,11 @@ import static org.junit.Assert.*;
 public class TaoClientTest {
     @Test
     public void testReadWrite() {
-        TaoConfigs.PARTITION_SERVERS = TaoConfigs.TEST_PARTITION_SERVERS;
-        TaoConfigs.PROXY_HOSTNAME = "localhost";
-
-        // Set system size
-        long systemSize = 246420;
-
         // Create and run server
         Runnable serverRunnable = () -> {
             // Create server
             MessageCreator m = new TaoMessageCreator();
-            TaoServer server = new TaoServer(systemSize, m);
+            TaoServer server = new TaoServer(m);
 
             // Run server
             server.run();
@@ -46,23 +40,24 @@ public class TaoClientTest {
             MessageCreator n = new TaoMessageCreator();
             PathCreator p = new TaoBlockCreator();
             Subtree s = new TaoSubtree();
-            TaoProxy proxy = new TaoProxy(systemSize, n, p, s);
+            TaoProxy proxy = new TaoProxy(n, p, s, false);
 
             proxy.initializeServer();
             proxy.run();
         };
         new Thread(proxyRunnable).start();
 
-        // Wait 5 seconds for the server and proxy to come up
+        // Wait 1 seconds for the server and proxy to come up
         try {
-            Thread.sleep(5000);
+            Thread.sleep(1000);
         } catch (Exception e) {
             e.printStackTrace();
         }
+        TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
 
-       // System.out.println("done sleeping");
         TaoClient client = new TaoClient();
 
+        TaoLogger.logForce("Start test");
         // Send write request
         long blockID = 3;
         byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
@@ -77,7 +72,7 @@ public class TaoClientTest {
         boolean writeStatus1 = client.write(blockID, dataToWrite1);
         assertTrue(writeStatus1);
 
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 1000; i++) {
             if (i % 2 == 0) {
                 blockID = 3;
             } else {
@@ -91,5 +86,6 @@ public class TaoClientTest {
                 assertTrue(Arrays.equals(dataToWrite1, z));
             }
         }
+        TaoLogger.logForce("End test");
     }
 }

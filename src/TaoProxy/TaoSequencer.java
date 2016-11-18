@@ -111,7 +111,7 @@ public class TaoSequencer implements Sequencer {
                 mRequestMap.notify();
             }
 
-            TaoLogger.logInfo("Sequencer finished onReceiveResponse for " + req.getRequestID());
+            TaoLogger.logDebug("Sequencer finished onReceiveResponse for " + req.getRequestID());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -135,7 +135,7 @@ public class TaoSequencer implements Sequencer {
                     }
                 }
 
-                TaoLogger.logInfo("1 Sequencer going to send response for " + req.getRequestID());
+                TaoLogger.logDebug("1 Sequencer going to send response for " + req.getRequestID() + " that was for blockid " + req.getBlockID() + " hostname " + req.getClientAddress().getHostName());
 
                 // Create a ProxyResponse based on type of request
                 ProxyResponse response = null;
