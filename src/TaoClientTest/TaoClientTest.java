@@ -40,24 +40,24 @@ public class TaoClientTest {
             MessageCreator n = new TaoMessageCreator();
             PathCreator p = new TaoBlockCreator();
             Subtree s = new TaoSubtree();
-            TaoProxy proxy = new TaoProxy(n, p, s);
+            TaoProxy proxy = new TaoProxy(n, p, s, false);
 
             proxy.initializeServer();
             proxy.run();
         };
         new Thread(proxyRunnable).start();
 
-        // Wait 5 seconds for the server and proxy to come up
+        // Wait 1 seconds for the server and proxy to come up
         try {
-            Thread.sleep(5000);
+            Thread.sleep(1000);
         } catch (Exception e) {
             e.printStackTrace();
         }
+        TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
 
-        System.out.println("done sleeping");
         TaoClient client = new TaoClient();
 
-        System.out.println("start");
+        TaoLogger.logForce("Start test");
         // Send write request
         long blockID = 3;
         byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
@@ -86,6 +86,6 @@ public class TaoClientTest {
                 assertTrue(Arrays.equals(dataToWrite1, z));
             }
         }
-        TaoLogger.logForce("end");
+        TaoLogger.logForce("End test");
     }
 }

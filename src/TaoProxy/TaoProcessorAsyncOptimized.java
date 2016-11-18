@@ -11,7 +11,9 @@ import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @brief An implementation of the TaoProcessor that is optimized for batch asynchronous operations
@@ -45,8 +47,19 @@ public class TaoProcessorAsyncOptimized extends TaoProcessor {
             boolean fakeRead;
             long pathID;
 
+            // We make sure the request list and read/write lock for maps are not null
+            List<ClientRequest> requestList = new ArrayList<>();
+            ReentrantReadWriteLock requestListLock = new ReentrantReadWriteLock();
+            mRequestMap.putIfAbsent(req.getBlockID(), requestList);
+            mRequestLockMap.putIfAbsent(req.getBlockID(), requestListLock);
+            requestList = mRequestMap.get(req.getBlockID());
+            requestListLock = mRequestLockMap.get(req.getBlockID());
+
+            // Acquire a read lock to ensure we do not assign a fake read that will not be answered to
+            requestListLock.readLock().lock();
+
             // Check if there is any current request for this block ID
-            if (mRequestMap.get(req.getBlockID()) == null || mRequestMap.get(req.getBlockID()).isEmpty()) {
+            if (requestList.isEmpty()) {
                 // If no other requests for this block ID have been made, it is not a fake read
                 fakeRead = false;
 
@@ -66,25 +79,11 @@ public class TaoProcessorAsyncOptimized extends TaoProcessor {
                 pathID = mCryptoUtil.getRandomPathID();
             }
 
-            // Insert request into request map
-            // Acquire read lock, as there may be a concurrent pruning of the map
-            // Note that pruning is required or empty lists will never be removed from map
-//            mRequestMapLock.readLock().lock();
+            // Add request to request map list
+            requestList.add(req);
 
-            // Check to see if a list already exists for this block id, if not create it
-            if (mRequestMap.get(req.getBlockID()) == null) {
-                // List does not yet exist, so we create it
-                ArrayList<ClientRequest> newList = new ArrayList<>();
-                newList.add(req);
-                mRequestMap.put(req.getBlockID(), newList);
-            } else {
-                // The list exists, so we just add the request to it
-                mRequestMap.get(req.getBlockID()).add(req);
-
-            }
-
-            // Release read lock
-//            mRequestMapLock.readLock().unlock();
+            // Unlock
+            requestListLock.readLock().unlock();
 
             TaoLogger.logInfo("Doing a read for pathID " + pathID);
 
@@ -93,11 +92,6 @@ public class TaoProcessorAsyncOptimized extends TaoProcessor {
             mPathReqMultiSet.add(pathID);
 
             // Create effectively final variables to use for inner classes
-            if (mRelativeLeafMapper == null) {
-                TaoLogger.logDebug("This thing is null");
-            } else {
-                TaoLogger.logDebug("This is not null");
-            }
             long relativeFinalPathID = mRelativeLeafMapper.get(pathID);
             long absoluteFinalPathID = pathID;
 
@@ -107,10 +101,6 @@ public class TaoProcessorAsyncOptimized extends TaoProcessor {
 
             // Get the channel to that server
             AsynchronousSocketChannel channelToServer = AsynchronousSocketChannel.open(mThreadGroup);
-
-            // Get the serverTakenMap for this client, which will be used as a lock for the above channel when requests
-            // from the same client arrive
-            Map<InetSocketAddress, Boolean> serverTakenMap = mAsyncProxyToServerTakenMap.get(req.getClientAddress());
 
             // Create a read request to send to server
             ProxyRequest proxyRequest = mMessageCreator.createProxyRequest();

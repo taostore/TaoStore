@@ -226,11 +226,6 @@ public class TaoProcessor implements Processor {
             mPathReqMultiSet.add(pathID);
 
             // Create effectively final variables to use for inner classes
-            if (mRelativeLeafMapper == null) {
-                TaoLogger.logDebug("This thing is null");
-            } else {
-                TaoLogger.logDebug("This is not null");
-            }
             long relativeFinalPathID = mRelativeLeafMapper.get(pathID);
             long absoluteFinalPathID = pathID;
 
@@ -472,6 +467,7 @@ public class TaoProcessor implements Processor {
             // Get a list of all the requests that have requested this block ID
             List<ClientRequest> requestList = mRequestMap.get(req.getBlockID());
             ReentrantReadWriteLock requestListLock = mRequestLockMap.get(req.getBlockID());
+
             // Figure out if this is the first time the element has appeared
             // We need to know this because we need to know if we will be able to find this element in the path or subtree
             boolean elementDoesExist = mPositionMap.getBlockPosition(req.getBlockID()) != -1;
@@ -570,6 +566,9 @@ public class TaoProcessor implements Processor {
         TaoLogger.logDebug("Trying to get data for blockID " + blockID);
         TaoLogger.logDebug("I think this is at path: " + mPositionMap.getBlockPosition(blockID));
 
+        // We will look 10 times before failing
+        int checkNum = 0;
+
         // Due to multiple threads moving blocks around, we need to run this in a loop
         while (true) {
             // Check if the bucket containing this blockID is in the subtree
@@ -588,7 +587,8 @@ public class TaoProcessor implements Processor {
                 } else {
                     // If null, we look again
                     TaoLogger.logDebug("scuba But bucket does not have the data we want");
-                    System.exit(1);
+
+                    // System.exit(1);
                     // continue;
                 }
             } else {
@@ -603,10 +603,20 @@ public class TaoProcessor implements Processor {
                 } else {
                     // If we did not find the block, we LOOK AGAIN
                     TaoLogger.logDebug("scuba Cannot find in subtree or stash");
-                    System.exit(1);
+                    // System.exit(1);
                     // continue;
                 }
             }
+
+            // If we've looped 10 times, probably can't find it
+            // TODO: We should not get to this point, and thus indicates a coding error
+            if (checkNum == 10) {
+                TaoLogger.logError("Cannot find data for block " + blockID);
+                System.exit(1);
+            }
+
+            // Increment
+            checkNum++;
         }
     }
 

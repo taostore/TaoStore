@@ -379,15 +379,10 @@ public class TaoClient implements Client {
                                     TaoLogger.logInfo("Got response to request #" + clientAnswer.getClientRequestID());
                                     mResponseWaitMap.remove(clientAnswer.getClientRequestID());
 
-                                    TaoLogger.logForce("We are about to check for an async load");
                                     if (ASYNC_LOAD) {
-                                        TaoLogger.logForce("Inside an async load");
-                                        long x = NUM_DATA_ITEMS + LOAD_SIZE - 1;
-                                        TaoLogger.logForce("I think x is " + x);
 
                                         // If this is an async load, we need to notify the test that we are done
                                         if (clientAnswer.getClientRequestID() == (NUM_DATA_ITEMS + LOAD_SIZE - 1)) {
-                                            TaoLogger.logForce("Done with load test async");
                                             synchronized (lock) {
                                                 lock.notifyAll();
                                             }

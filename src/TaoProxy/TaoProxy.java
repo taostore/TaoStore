@@ -108,7 +108,7 @@ public class TaoProxy implements Proxy {
 
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
-            mProcessor = new TaoProcessorAsyncOptimized(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
+            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -119,7 +119,7 @@ public class TaoProxy implements Proxy {
      * @param messageCreator
      * @param pathCreator
      */
-    public TaoProxy(MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree, boolean synhronousOptimized) {
+    public TaoProxy(MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree, boolean synchronousOptimized) {
         try {
             // For trace purposes
             TaoLogger.logLevel = TaoLogger.LOG_OFF;
@@ -161,7 +161,7 @@ public class TaoProxy implements Proxy {
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
 
-            if (synhronousOptimized) {
+            if (synchronousOptimized) {
                 mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
             } else {
                 mProcessor = new TaoProcessorAsyncOptimized(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
