@@ -544,6 +544,7 @@ public class TaoClient implements Client {
         TaoLogger.logForce("Going to wait");
         synchronized (sAsycLoadLock) {
             sAsycLoadLock.wait();
+        }
 
 
         long endTime = System.currentTimeMillis();
