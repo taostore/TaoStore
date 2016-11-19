@@ -49,17 +49,27 @@ public class TaoClient implements Client {
     // ExecutorService for async reads/writes
     protected ExecutorService mExecutor;
 
+    /* Below static variables are used for load testing*/
+
     // Used for measuring response time
-    public static List<Long> mResponseTimes;
+    public static List<Long> sResponseTimes = new ArrayList<>();
 
-    public static Object lock = new Object();
+    // Used for locking the async load test until all the operations are replied to
+    public static Object sAsycLoadLock = new Object();
 
-    public static ArrayList<byte[]> listOfBytes = new ArrayList<>();
+    // List of bytes used for writing blocks as well as comparing the results of returned block data
+    public static ArrayList<byte[]> sListOfBytes = new ArrayList<>();
 
-    public static Map<Long, Integer> returnMap = new HashMap<>();
+    // Map used during async load tests to map a blockID to the bytes that it should be compared to upon proxy reply
+    public static Map<Long, Integer> sReturnMap = new HashMap<>();
 
+    // Number of operations in load test
     public static int LOAD_SIZE = 1000;
+
+    // Number of unique data items in load test
     public static int NUM_DATA_ITEMS = 1000;
+
+    // Whether or no a load test is for an async load or not
     public static boolean ASYNC_LOAD = false;
 
     /**
@@ -93,9 +103,6 @@ public class TaoClient implements Client {
 
             // Create executor
             mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-
-            // Initialize list
-            mResponseTimes = new ArrayList<>();
 
             // Request ID counter
             mRequestID = new AtomicLong();
@@ -143,9 +150,6 @@ public class TaoClient implements Client {
 
             // Create executor
             mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-
-            // Initialize list
-            mResponseTimes = new ArrayList<>();
 
             // Request ID counter
             mRequestID = new AtomicLong();
@@ -218,7 +222,7 @@ public class TaoClient implements Client {
         // Set additional data depending on message type
         if (type == MessageTypes.CLIENT_READ_REQUEST) {
             if (ASYNC_LOAD) {
-                returnMap.put(requestID, (int) blockID - 1);
+                sReturnMap.put(requestID, (int) blockID - 1);
             }
             request.setType(MessageTypes.CLIENT_READ_REQUEST);
             request.setData(new byte[TaoConfigs.BLOCK_SIZE]);
@@ -383,15 +387,15 @@ public class TaoClient implements Client {
 
                                         // If this is an async load, we need to notify the test that we are done
                                         if (clientAnswer.getClientRequestID() == (NUM_DATA_ITEMS + LOAD_SIZE - 1)) {
-                                            synchronized (lock) {
-                                                lock.notifyAll();
+                                            synchronized (sAsycLoadLock) {
+                                                sAsycLoadLock.notifyAll();
                                             }
                                         }
 
                                         // Check for correctness
-                                        if (returnMap.get(clientAnswer.getClientRequestID()) != null) {
-                                            if (!Arrays.equals(listOfBytes.get(returnMap.get(clientAnswer.getClientRequestID())), clientAnswer.getReturnData())) {
-                                                TaoLogger.logError("Read failed for block " + returnMap.get(clientAnswer.getClientRequestID()));
+                                        if (sReturnMap.get(clientAnswer.getClientRequestID()) != null) {
+                                            if (!Arrays.equals(sListOfBytes.get(sReturnMap.get(clientAnswer.getClientRequestID())), clientAnswer.getReturnData())) {
+                                                TaoLogger.logError("Read failed for block " + sReturnMap.get(clientAnswer.getClientRequestID()));
                                                 System.exit(1);
                                             }
                                         }
@@ -489,7 +493,7 @@ public class TaoClient implements Client {
         // Do a write for numDataItems blocks
         long blockID;
         // ArrayList<byte[]> listOfBytes = new ArrayList<>();
-        listOfBytes = new ArrayList<>();
+        sListOfBytes = new ArrayList<>();
 
         boolean writeStatus;
         for (int i = 1; i <= NUM_DATA_ITEMS; i++) {
@@ -497,7 +501,7 @@ public class TaoClient implements Client {
             blockID = i;
             byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
             Arrays.fill(dataToWrite, (byte) blockID);
-            listOfBytes.add(dataToWrite);
+            sListOfBytes.add(dataToWrite);
 
             writeStatus = client.write(blockID, dataToWrite);
 
@@ -525,20 +529,20 @@ public class TaoClient implements Client {
                 // Send read and keep track of response time
                 long start = System.currentTimeMillis();
                 client.readAsync(targetBlock);
-                mResponseTimes.add(System.currentTimeMillis() - start);
+                sResponseTimes.add(System.currentTimeMillis() - start);
 
             } else {
                 TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
 
                 // Send write and keep track of response time
                 long start = System.currentTimeMillis();
-                client.writeAsync(targetBlock, listOfBytes.get(targetBlock - 1));
-                mResponseTimes.add(System.currentTimeMillis() - start);
+                client.writeAsync(targetBlock, sListOfBytes.get(targetBlock - 1));
+                sResponseTimes.add(System.currentTimeMillis() - start);
             }
         }
         TaoLogger.logForce("Going to wait");
-        synchronized (lock) {
-            lock.wait();
+        synchronized (sAsycLoadLock) {
+            sAsycLoadLock.wait();
         }
 
         long endTime = System.currentTimeMillis();
@@ -546,10 +550,10 @@ public class TaoClient implements Client {
 
         // Get average response time over 1000 operations
         long total = 0;
-        for (Long l : mResponseTimes) {
+        for (Long l : sResponseTimes) {
             total += l;
         }
-        float average = total / ((float) mResponseTimes.size());
+        float average = total / ((float) sResponseTimes.size());
 
         TaoLogger.logForce("Average response time was " + average + " ms");
         TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
@@ -603,7 +607,7 @@ public class TaoClient implements Client {
                 // Send read and keep track of response time
                 long start = System.currentTimeMillis();
                 z = client.read(targetBlock);
-                mResponseTimes.add(System.currentTimeMillis() - start);
+                sResponseTimes.add(System.currentTimeMillis() - start);
 
                 if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
                     TaoLogger.logError("Read failed for block " + targetBlock);
@@ -615,7 +619,7 @@ public class TaoClient implements Client {
                 // Send write and keep track of response time
                 long start = System.currentTimeMillis();
                 writeStatus = client.write(targetBlock, listOfBytes.get(targetBlock - 1));
-                mResponseTimes.add(System.currentTimeMillis() - start);
+                sResponseTimes.add(System.currentTimeMillis() - start);
 
                 if (!writeStatus) {
                     TaoLogger.logError("Write failed for block " + targetBlock);
@@ -630,10 +634,10 @@ public class TaoClient implements Client {
 
         // Get average response time over 1000 operations
         long total = 0;
-        for (Long l : mResponseTimes) {
+        for (Long l : sResponseTimes) {
             total += l;
         }
-        float average = total / ((float) mResponseTimes.size());
+        float average = total / ((float) sResponseTimes.size());
 
         TaoLogger.logForce("Average response time was " + average + " ms");
         TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
