@@ -1,6 +1,5 @@
 TaoStore
 ========
-
 This is an implementation of TaoStore (Cetin et al, S&P 2016) that is meant to be used for both research purposes, as well as for use in actual
 real world applications.
 
@@ -28,7 +27,14 @@ real world applications.
   * Reasons for this mainly involve needing to initialize several data structures, as well as JIT compiling Java byte code into native code
 * Has dependency on guava.jar https://github.com/google/guava 
   * Can be downloaded here https://github.com/google/guava/wiki/Release19
-  
+
+*****    
+ 
+**Usage in Larger Application:**
+* To use in a larger application, set up proxy and server(s) as described in *Basic Usage* and then create your own instance of a TaoClient within
+  your application (or use your own implementation of Client, see *Extending For Custom Use*).
+  * This client's callable methods can be found in the *TaoClient/Client.java* interface
+
 ***** 
   
 **Command Line Arguments:**
@@ -59,13 +65,6 @@ real world applications.
     * Can be either *synchronous_optimized* or *asynchronous_optimized*
     * Default is *synchronous_optimized*
     * This option either optimizes the proxy for a synchronous load test or an asynchronous load test
-    
-*****    
- 
-**Usage in Larger Application:**
-* To use in a larger application, set up proxy and server(s) as described in *Basic Usage* and then create your own instance of a TaoClient within
-  your application (or use your own implementation of Client, see *Extending For Custom Use*).
-  * This client's callable methods can be found in the *TaoClient/Client.java* interface
 
 ***** 
 

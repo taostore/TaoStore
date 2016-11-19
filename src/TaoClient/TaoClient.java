@@ -69,7 +69,7 @@ public class TaoClient implements Client {
     // Number of unique data items in load test
     public static int NUM_DATA_ITEMS = 1000;
 
-    // Whether or no a load test is for an async load or not
+    // Whether or not a load test is for an async load or not
     public static boolean ASYNC_LOAD = false;
 
     /**
@@ -492,7 +492,6 @@ public class TaoClient implements Client {
 
         // Do a write for numDataItems blocks
         long blockID;
-        // ArrayList<byte[]> listOfBytes = new ArrayList<>();
         sListOfBytes = new ArrayList<>();
 
         boolean writeStatus;
@@ -502,6 +501,7 @@ public class TaoClient implements Client {
             byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
             Arrays.fill(dataToWrite, (byte) blockID);
             sListOfBytes.add(dataToWrite);
+
 
             writeStatus = client.write(blockID, dataToWrite);
 
@@ -531,6 +531,7 @@ public class TaoClient implements Client {
                 client.readAsync(targetBlock);
                 sResponseTimes.add(System.currentTimeMillis() - start);
 
+
             } else {
                 TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
 
@@ -543,7 +544,7 @@ public class TaoClient implements Client {
         TaoLogger.logForce("Going to wait");
         synchronized (sAsycLoadLock) {
             sAsycLoadLock.wait();
-        }
+
 
         long endTime = System.currentTimeMillis();
         TaoLogger.logForce("Ending load test");
@@ -554,6 +555,7 @@ public class TaoClient implements Client {
             total += l;
         }
         float average = total / ((float) sResponseTimes.size());
+
 
         TaoLogger.logForce("Average response time was " + average + " ms");
         TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
@@ -608,6 +610,7 @@ public class TaoClient implements Client {
                 long start = System.currentTimeMillis();
                 z = client.read(targetBlock);
                 sResponseTimes.add(System.currentTimeMillis() - start);
+
 
                 if (!Arrays.equals(listOfBytes.get(targetBlock-1), z)) {
                     TaoLogger.logError("Read failed for block " + targetBlock);
