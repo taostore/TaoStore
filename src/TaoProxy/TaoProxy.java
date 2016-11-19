@@ -8,8 +8,6 @@ import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 
 import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -21,7 +19,6 @@ import java.nio.channels.CompletionHandler;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.Executors;
 
 /**
@@ -66,6 +63,7 @@ public class TaoProxy implements Proxy {
      * @brief Constructor
      * @param messageCreator
      * @param pathCreator
+     * @param subtree
      */
     public TaoProxy(MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree) {
         try {
@@ -109,63 +107,6 @@ public class TaoProxy implements Proxy {
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
             mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * @brief Constructor
-     * @param messageCreator
-     * @param pathCreator
-     */
-    public TaoProxy(MessageCreator messageCreator, PathCreator pathCreator, Subtree subtree, boolean synchronousOptimized) {
-        try {
-            // For trace purposes
-            TaoLogger.logLevel = TaoLogger.LOG_OFF;
-
-            // Initialize needed constants
-            TaoConfigs.initConfiguration();
-
-            // Create a CryptoUtil
-            mCryptoUtil = new TaoCryptoUtil();
-
-            // Assign subtree
-            mSubtree = subtree;
-
-            // Create a position map
-            mPositionMap = new TaoPositionMap(TaoConfigs.PARTITION_SERVERS);
-
-            // Assign the message and path creators
-            mMessageCreator = messageCreator;
-            mPathCreator = pathCreator;
-
-            // Create a thread pool for asynchronous sockets
-            mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
-
-            // Map each leaf to a relative leaf for the servers
-            mRelativeLeafMapper = new HashMap<>();
-            int numServers = TaoConfigs.PARTITION_SERVERS.size();
-            int numLeaves = 1 << TaoConfigs.TREE_HEIGHT;
-            int leavesPerPartition = numLeaves / numServers;
-            for (int i = 0; i < numLeaves; i += numLeaves/numServers) {
-                long j = i;
-                long relativeLeaf = 0;
-                while (j < i + leavesPerPartition) {
-                    mRelativeLeafMapper.put(j, relativeLeaf);
-                    j++;
-                    relativeLeaf++;
-                }
-            }
-
-            // Initialize the sequencer and proxy
-            mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
-
-            if (synchronousOptimized) {
-                mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
-            } else {
-                mProcessor = new TaoProcessorAsyncOptimized(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
-            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -447,18 +388,11 @@ public class TaoProxy implements Proxy {
             String configFileName = options.getOrDefault("config_file", TaoConfigs.USER_CONFIG_FILE);
             TaoConfigs.USER_CONFIG_FILE = configFileName;
 
-            // Determine if the proxy should be optimized for synchronous client operations or asynchronous
-            String proxyType = options.getOrDefault("proxy_type", "synchronous_optimized");
-            TaoProxy proxy;
-            if (proxyType.equals("synchronous_optimized")) {
-                 proxy = new TaoProxy(new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree(), true);
-            } else {
-                proxy = new TaoProxy(new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree(), false);
-            }
+            // Create proxy
+            TaoProxy proxy = new TaoProxy(new TaoMessageCreator(), new TaoBlockCreator(), new TaoSubtree());
 
             // Initialize and run server
             proxy.initializeServer();
-
             TaoLogger.logForce("Finished init, running proxy");
             proxy.run();
         } catch (Exception e) {

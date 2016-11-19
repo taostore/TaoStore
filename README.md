@@ -60,11 +60,6 @@ real world applications.
   * --data_set_size
     * The amount of unique data items to be used in the load test
     * Default is 1000
-* For TaoProxy
-  * --proxy_type
-    * Can be either *synchronous_optimized* or *asynchronous_optimized*
-    * Default is *synchronous_optimized*
-    * This option either optimizes the proxy for a synchronous load test or an asynchronous load test
 
 ***** 
 

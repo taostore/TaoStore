@@ -17,10 +17,7 @@ import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -90,13 +87,15 @@ public class TaoProcessor implements Processor {
     protected Map<Long, Long> mRelativeLeafMapper;
 
     // Map each client to a map that map's each storage server's InetSocketAddress to a channel to that storage server
-    // Note this is needed because if we instead make a new channel on each read or write to server, we may cause an
-    // error of having no more sockets. Can be improved to have more than just one channel per server per client.
+    // We use this in order to have at least one dedicated channel for each client to each storage server to increase throughput,
+    // as creating a new channel each time can result in a lot of overhead
+    // In the case the the dedicated channel is occupied, we will just create a new channel
     protected Map<InetSocketAddress, Map<InetSocketAddress, AsynchronousSocketChannel>> mProxyToServerChannelMap;
 
-    // Each client will have a map that maps each storage server's InetSocketAddress to a boolean
-    // This boolean will indicate if the channel for that storage server (for this client) is being used for I/O
-    protected Map<InetSocketAddress, Map<InetSocketAddress, Boolean>> mAsyncProxyToServerTakenMap;
+    // Each client will have a map that maps each storage server's InetSocketAddress to a semaphore
+    // This semaphore will control access to the dedicated channel so that two threads aren't using it at the same time
+    protected Map<InetSocketAddress, Map<InetSocketAddress, Semaphore>> mAsyncProxyToServerSemaphoreMap;
+
 
     /**
      * @brief Constructor
@@ -163,7 +162,7 @@ public class TaoProcessor implements Processor {
 
             // Initialize maps
             mProxyToServerChannelMap = new ConcurrentHashMap<>();
-            mAsyncProxyToServerTakenMap = new ConcurrentHashMap<>();
+            mAsyncProxyToServerSemaphoreMap = new ConcurrentHashMap<>();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -253,9 +252,9 @@ public class TaoProcessor implements Processor {
             // Get the channel to that server
             AsynchronousSocketChannel channelToServer = mChannelMap.get(targetServer);
 
-            // Get the serverTakenMap for this client, which will be used as a lock for the above channel when requests
-            // from the same client arrive
-            Map<InetSocketAddress, Boolean> serverTakenMap = mAsyncProxyToServerTakenMap.get(req.getClientAddress());
+            // Get the serverSemaphoreMap for this client, which will be used to control access to the dedicated channel
+            // when requests from the same client arrive for the same server
+            Map<InetSocketAddress, Semaphore> serverSemaphoreMap = mAsyncProxyToServerSemaphoreMap.get(req.getClientAddress());
 
             // Create a read request to send to server
             ProxyRequest proxyRequest = mMessageCreator.createProxyRequest();
@@ -265,26 +264,8 @@ public class TaoProcessor implements Processor {
             // Serialize request
             byte[] requestData = proxyRequest.serialize();
 
-            // Claim the channel
-            // Note that this implementation is optimized for synchronous operations (where the client blocks waiting
-            // for the return of the previous operation before making a new request). Thus we implement the following by
-            // allowing each client to only have one corresponding channel per storage server, having to block requests for
-            // blocks that belong to the same storage server until the original request returns. This is because the
-            // overhead of creating a new channel can be large depending on RTT. For a fully asynchronous implementation,
-            // please check the TaoProcessAsyncOptimized implementation of readPath, where a new channel is made for
-            // each request
-            // TODO: AsynchronousSocketChannel can read and write concurrently, so we can make the following code
-            // TODO: more efficient
-            synchronized (channelToServer) {
-                // Check to see if the channel is being used. If it is, wait
-                while (serverTakenMap.get(targetServer)) {
-                    channelToServer.wait();
-                }
-
-                // Mark the channel serving this server as taken so no other thread can use the channel while
-                // channel is being used
-                serverTakenMap.replace(targetServer, true);
-
+            // Claim either the dedicated channel or create a new one if the dedicated channel is already being used
+            if (serverSemaphoreMap.get(targetServer).tryAcquire()) {
                 // First we send the message type to the server along with the size of the message
                 byte[] messageType = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_READ_REQUEST, requestData.length);
                 ByteBuffer entireMessage = ByteBuffer.wrap(Bytes.concat(messageType, requestData));
@@ -330,6 +311,9 @@ public class TaoProcessor implements Processor {
                                             return;
                                         }
 
+                                        // Release the semaphore for this server's dedicated channel
+                                        serverSemaphoreMap.get(targetServer).release();
+
                                         // Flip the byte buffer for reading
                                         pathInBytes.flip();
 
@@ -346,11 +330,6 @@ public class TaoProcessor implements Processor {
                                             // Set absolute path ID
                                             response.setPathID(absoluteFinalPathID);
 
-                                            // Mark the channel as free
-                                            synchronized (channelToServer) {
-                                                serverTakenMap.replace(targetServer, false);
-                                                channelToServer.notifyAll();
-                                            }
 
                                             // Send response to proxy
                                             Runnable serializeProcedure = () -> mProxy.onReceiveResponse(req, response, fakeRead);
@@ -372,6 +351,113 @@ public class TaoProcessor implements Processor {
 
                     @Override
                     public void failed(Throwable exc, Void attachment) {
+                    }
+                });
+            } else {
+                // We could not claim the dedicated channel for this server, we will instead create a new channel
+
+                // Get the channel to that server
+                AsynchronousSocketChannel newChannelToServer = AsynchronousSocketChannel.open(mThreadGroup);
+
+                // Connect to server
+                newChannelToServer.connect(targetServer, null, new CompletionHandler<Void, Object>() {
+                    @Override
+                    public void completed(Void result, Object attachment) {
+                        // First we send the message type to the server along with the size of the message
+                        byte[] messageType = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_READ_REQUEST, requestData.length);
+                        ByteBuffer entireMessage = ByteBuffer.wrap(Bytes.concat(messageType, requestData));
+
+                        // Asynchronously send message type and length to server
+                        newChannelToServer.write(entireMessage, null, new CompletionHandler<Integer, Void>() {
+                            @Override
+                            public void completed(Integer result, Void attachment) {
+                                // Make sure we write the whole message
+                                while (entireMessage.remaining() > 0) {
+                                    newChannelToServer.write(entireMessage, null, this);
+                                    return;
+                                }
+
+                                // Asynchronously read response type and size from server
+                                ByteBuffer messageTypeAndSize = MessageUtility.createTypeReceiveBuffer();
+
+                                newChannelToServer.read(messageTypeAndSize, null, new CompletionHandler<Integer, Void>() {
+                                    @Override
+                                    public void completed(Integer result, Void attachment) {
+                                        // Make sure we read the entire message
+                                        while (messageTypeAndSize.remaining() > 0) {
+                                            newChannelToServer.read(messageTypeAndSize, null, this);
+                                            return;
+                                        }
+
+                                        // Flip the byte buffer for reading
+                                        messageTypeAndSize.flip();
+
+                                        // Parse the message type and size from server
+                                        int[] typeAndLength = MessageUtility.parseTypeAndLength(messageTypeAndSize);
+                                        int messageType = typeAndLength[0];
+                                        int messageLength = typeAndLength[1];
+
+                                        // Asynchronously read response from server
+                                        ByteBuffer pathInBytes = ByteBuffer.allocate(messageLength);
+                                        newChannelToServer.read(pathInBytes, null, new CompletionHandler<Integer, Void>() {
+                                            @Override
+                                            public void completed(Integer result, Void attachment) {
+                                                // Make sure we read all the bytes for the path
+                                                while (pathInBytes.remaining() > 0) {
+                                                    newChannelToServer.read(pathInBytes, null, this);
+                                                    return;
+                                                }
+
+                                                // Close channel
+                                                try {
+                                                    newChannelToServer.close();
+                                                } catch (IOException e) {
+                                                    e.printStackTrace();
+                                                }
+
+                                                // Flip the byte buffer for reading
+                                                pathInBytes.flip();
+
+                                                // Serve message based on type
+                                                if (messageType == MessageTypes.SERVER_RESPONSE) {
+                                                    // Get message bytes
+                                                    byte[] serialized = new byte[messageLength];
+                                                    pathInBytes.get(serialized);
+
+                                                    // Create ServerResponse object based on data
+                                                    ServerResponse response = mMessageCreator.createServerResponse();
+                                                    response.initFromSerialized(serialized);
+
+                                                    // Set absolute path ID
+                                                    response.setPathID(absoluteFinalPathID);
+
+                                                    // Send response to proxy
+                                                    Runnable serializeProcedure = () -> mProxy.onReceiveResponse(req, response, fakeRead);
+                                                    new Thread(serializeProcedure).start();
+                                                }
+                                            }
+
+                                            @Override
+                                            public void failed(Throwable exc, Void attachment) {
+                                            }
+                                        });
+                                    }
+
+                                    @Override
+                                    public void failed(Throwable exc, Void attachment) {
+                                    }
+                                });
+                            }
+
+                            @Override
+                            public void failed(Throwable exc, Void attachment) {
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void failed(Throwable exc, Object attachment) {
+
                     }
                 });
             }
@@ -402,9 +488,9 @@ public class TaoProcessor implements Processor {
             synchronized (newMap) {
                 // Check if another thread has already added channels
                 if (newMap.size() != numServers) {
-                    // Create the taken map for this addr
-                    Map<InetSocketAddress, Boolean> newBooleanMap = new ConcurrentHashMap<>();
-                    mAsyncProxyToServerTakenMap.put(addr, newBooleanMap);
+                    // Create the taken semaphore for this addr
+                    Map<InetSocketAddress, Semaphore> newSemaphoreMap = new ConcurrentHashMap<>();
+                    mAsyncProxyToServerSemaphoreMap.put(addr, newSemaphoreMap);
 
                     // Create the channels to the storage servers
                     for (int i = 0; i < numServers; i++) {
@@ -412,8 +498,11 @@ public class TaoProcessor implements Processor {
                         Future connection = channel.connect(TaoConfigs.PARTITION_SERVERS.get(i));
                         connection.get();
 
+                        // Add the channel to the map
                         newMap.put(TaoConfigs.PARTITION_SERVERS.get(i), channel);
-                        newBooleanMap.put(TaoConfigs.PARTITION_SERVERS.get(i), false);
+
+                        // Add a new semaphore for this channel to the map
+                        newSemaphoreMap.put(TaoConfigs.PARTITION_SERVERS.get(i), new Semaphore(1));
                     }
                 }
             }
