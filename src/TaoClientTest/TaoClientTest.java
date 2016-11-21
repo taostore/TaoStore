@@ -40,7 +40,7 @@ public class TaoClientTest {
             MessageCreator n = new TaoMessageCreator();
             PathCreator p = new TaoBlockCreator();
             Subtree s = new TaoSubtree();
-            TaoProxy proxy = new TaoProxy(n, p, s, false);
+            TaoProxy proxy = new TaoProxy(n, p, s);
 
             proxy.initializeServer();
             proxy.run();
