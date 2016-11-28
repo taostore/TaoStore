@@ -38,7 +38,7 @@ public class TaoSubtree implements Subtree {
 
         // Check if we have more than one server, in which case we must initialize the subtree
         if (numServers > 1) {
-            lastLevelToSave = (numServers / 2) - 1;
+            lastLevelToSave = (int) (Math.log(numServers) / Math.log(2)) - 1;
             TaoLogger.logInfo("The last level to save is " + lastLevelToSave);
 
             // Initialize the needed amount of top nodes
@@ -343,6 +343,7 @@ public class TaoSubtree implements Subtree {
         // Check if we should delete the child
         TaoLogger.logDebug("The current parent level is " + parentLevel + " and the lastLevelToSave is " + lastLevelToSave);
 
+        // Print the child bucket for debugging purposes
         child.print();
 
         // Check if we should delete child

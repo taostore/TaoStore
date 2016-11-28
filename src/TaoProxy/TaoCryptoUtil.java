@@ -11,7 +11,6 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.Random;
 
 /**
  * @brief Class to handle crypto related activities
@@ -95,7 +94,7 @@ public class TaoCryptoUtil implements CryptoUtil {
             int numServers = TaoConfigs.PARTITION_SERVERS.size();
             if (numServers > 1) {
                 // Calculate which is the first bucket in the path that we need to keep in the encryption
-                int firstNeededEncryptedBucketStart = ((numServers / 2) - 1) + 1;
+                int firstNeededEncryptedBucketStart = (int) (Math.log(numServers) / Math.log(2));
 
                 // Keep only the encrypted buckets starting from the first one needed
                 encryptedBuckets = Arrays.copyOfRange(encryptedBuckets,

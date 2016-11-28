@@ -304,7 +304,7 @@ public class TaoConfigs {
      */
     private static int calculateStorageServerHeight(int totalHeight, int numServers) {
         if (numServers > 1) {
-            int levelSavedOnProxy = (numServers / 2);
+            int levelSavedOnProxy = (int) (Math.log(numServers) / Math.log(2));
             return (totalHeight - levelSavedOnProxy);
         }
         return totalHeight;
