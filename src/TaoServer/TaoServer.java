@@ -25,8 +25,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * @brief Class to represent a server for TaoStore
  */
-// TODO: create interface
-public class TaoServer {
+public class TaoServer implements Server {
     // The file object the server will interact with
     protected RandomAccessFile mDiskFile;
 
@@ -86,11 +85,7 @@ public class TaoServer {
         }
     }
 
-    /**
-     * @brief Method which will read the path with the specified pathID from disk and return the result
-     * @param pathID
-     * @return the bytes of the desired path
-     */
+    @Override
     public byte[] readPath(long pathID) {
         // Array of byte arrays (buckets expressed as byte array)
         byte[][] pathInBytes = new byte[mServerTreeHeight + 1][];
@@ -186,12 +181,7 @@ public class TaoServer {
         return null;
     }
 
-    /**
-     * @brief Method to write data to the specified file
-     * @param pathID
-     * @param data
-     * @return if the write was successful or not
-     */
+    @Override
     public boolean writePath(long pathID, byte[] data, long timestamp) {
         try {
             // Get the directions for this path
@@ -292,9 +282,7 @@ public class TaoServer {
         return false;
     }
 
-    /**
-     * @brief Method to run proxy indefinitely
-     */
+    @Override
     public void run() {
         try {
             // Create a thread pool for asynchronous sockets
@@ -536,7 +524,7 @@ public class TaoServer {
             TaoConfigs.USER_CONFIG_FILE = configFileName;
 
             // Create server and run
-            TaoServer server = new TaoServer(new TaoMessageCreator());
+            Server server = new TaoServer(new TaoMessageCreator());
             server.run();
         } catch (Exception e) {
             e.printStackTrace();
