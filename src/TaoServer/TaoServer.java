@@ -15,10 +15,7 @@ import com.google.common.primitives.Longs;
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.AsynchronousChannelGroup;
-import java.nio.channels.AsynchronousServerSocketChannel;
-import java.nio.channels.AsynchronousSocketChannel;
-import java.nio.channels.CompletionHandler;
+import java.nio.channels.*;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -36,10 +33,6 @@ public class TaoServer {
     // The total amount of server storage in bytes
     protected long mServerSize;
 
-    // Lock for bucket. Note that we cannot use a read-write lock, as concurrent reading on a RandomAccessFile is not
-    // thread safe
-    private final transient ReentrantLock mFileLock = new ReentrantLock();
-
     // A MessageCreator to create different types of messages to be passed from client, proxy, and server
     protected MessageCreator mMessageCreator;
 
@@ -48,6 +41,10 @@ public class TaoServer {
 
     // An array that will represent the tree, and keep track of the most recent timestamp of a particular bucket
     protected long[] mMostRecentTimestamp;
+
+    // We will lock at a bucket level when operating on file
+    protected ReentrantLock[] mBucketLocks;
+
 
     /**
      * @brief Constructor
@@ -63,9 +60,15 @@ public class TaoServer {
             // Calculate the height of the tree that this particular server will store
             mServerTreeHeight = TaoConfigs.STORAGE_SERVER_TREE_HEIGHT;
 
-            // Create array that will keep track of the most recent timestamp of each bucket
-            int numPaths = 2 << mServerTreeHeight;
-            mMostRecentTimestamp = new long[numPaths];
+            // Create array that will keep track of the most recent timestamp of each bucket and the lock for each bucket
+            int numBuckets = (2 << (mServerTreeHeight + 1)) - 1 ;
+            mMostRecentTimestamp = new long[numBuckets];
+            mBucketLocks = new ReentrantLock[numBuckets];
+
+            // Initialize the locks
+            for (int i = 0; i < mBucketLocks.length; i++) {
+                mBucketLocks[i] = new ReentrantLock();
+            }
 
             // Create file object which the server will interact with
             mDiskFile = new RandomAccessFile(TaoConfigs.ORAM_FILE, "rwd");
@@ -93,9 +96,6 @@ public class TaoServer {
         byte[][] pathInBytes = new byte[mServerTreeHeight + 1][];
 
         try {
-            // Acquire the file lock
-            mFileLock.lock();
-
             // Get the directions for this path
             boolean[] pathDirection = Utility.getPathFromPID(pathID, mServerTreeHeight);
 
@@ -108,17 +108,26 @@ public class TaoServer {
             // The current bucket we are looking for
             int currentBucket = 0;
 
-            // Seek into the file
-            mDiskFile.seek(offset);
-
             // Keep track of bucket size
             int mBucketSize = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
 
             // Allocate byte array for this bucket
             pathInBytes[currentBucket] = new byte[mBucketSize];
 
+            // Keep track of the bucket we need to lock
+            int bucketLockIndex = 0;
+
+            // Lock appropriate bucket
+            mBucketLocks[bucketLockIndex].lock();
+
+            // Seek into the file
+            mDiskFile.seek(offset);
+
             // Read bytes from the disk file into the byte array for this bucket
             mDiskFile.readFully(pathInBytes[currentBucket]);
+
+            // Unlock appropriate bucket
+            mBucketLocks[bucketLockIndex].unlock();
 
             // Increment the current bucket
             currentBucket++;
@@ -127,28 +136,36 @@ public class TaoServer {
             for (Boolean right : pathDirection) {
                 // Navigate the array representing the tree
                 if (right) {
+                    bucketLockIndex = 2 * bucketLockIndex + 2;
                     offset = (2 * index + 2) * mBucketSize;
                     index = offset / mBucketSize;
                 } else {
+                    bucketLockIndex = 2 * bucketLockIndex + 1;
                     offset = (2 * index + 1) * mBucketSize;
                     index = offset / mBucketSize;
                 }
 
-                // Seek into file
-                mDiskFile.seek(offset);
-
                 // Allocate byte array for this bucket
                 pathInBytes[currentBucket] = new byte[mBucketSize];
 
+                // Lock bucket
+                mBucketLocks[bucketLockIndex].lock();
+
+                // Seek into file
+                mDiskFile.seek(offset);
+
                 // Read bytes from the disk file into the byte array for this bucket
                 mDiskFile.readFully(pathInBytes[currentBucket]);
+
+                // Unlock bucket
+                mBucketLocks[bucketLockIndex].unlock();
 
                 // Increment the current bucket
                 currentBucket++;
             }
 
             // Release the file lock
-            mFileLock.unlock();
+          //  mFileLock.unlock();
 
             // Put first bucket into a new byte array representing the final return value
             byte[] returnData = pathInBytes[0];
@@ -177,9 +194,6 @@ public class TaoServer {
      */
     public boolean writePath(long pathID, byte[] data, long timestamp) {
         try {
-            // Acquire the file lock
-            mFileLock.lock();
-
             // Get the directions for this path
             boolean[] pathDirection = Utility.getPathFromPID(pathID, mServerTreeHeight);
 
@@ -193,18 +207,29 @@ public class TaoServer {
             int dataIndexStart = 0;
             int dataIndexStop = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
 
-            // Seek into the file
-            mDiskFile.seek(offsetInDisk);
+            // The current bucket we are looking for
+            int bucketLockIndex = 0;
 
+            // The current timestamp we are checking
             int timestampIndex = 0;
 
             // Check to see what the timestamp is for the root
             if (timestamp >= mMostRecentTimestamp[timestampIndex]) {
+
+                // Lock bucket
+                mBucketLocks[bucketLockIndex].lock();
+
+                // Seek into file
+                mDiskFile.seek(offsetInDisk);
+
                 // Write bucket to disk
                 mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
 
                 // Update timestamp
                 mMostRecentTimestamp[timestampIndex] = timestamp;
+
+                // Unlock bucket
+                mBucketLocks[bucketLockIndex].unlock();
             }
 
             // Keep track of bucket size
@@ -218,37 +243,44 @@ public class TaoServer {
             for (Boolean right : pathDirection) {
                 // Navigate the array representing the tree
                 if (right) {
+                    bucketLockIndex = 2 * bucketLockIndex + 2;
                     timestampIndex = 2 * timestampIndex + 2;
                     offsetInDisk = (2 * indexIntoTree + 2) * mBucketSize;
                     indexIntoTree = offsetInDisk / mBucketSize;
                 } else {
+                    bucketLockIndex = 2 * bucketLockIndex + 1;
                     timestampIndex = 2 * timestampIndex + 1;
                     offsetInDisk = (2 * indexIntoTree + 1) * mBucketSize;
                     indexIntoTree = offsetInDisk / mBucketSize;
                 }
 
-                // Seek into disk
-                mDiskFile.seek(offsetInDisk);
+
 
                 // Get the data for the current bucket to be writen
                 byte[] dataToWrite = Arrays.copyOfRange(data, dataIndexStart, dataIndexStop);
 
                 // Check to see that we have the newest version of bucket
                 if (timestamp >= mMostRecentTimestamp[timestampIndex]) {
+                    // Lock bucket
+                    mBucketLocks[bucketLockIndex].lock();
+
+                    // Seek into disk
+                    mDiskFile.seek(offsetInDisk);
+
                     // Write bucket to disk
                     mDiskFile.write(dataToWrite);
 
                     // Update timestamp
                     mMostRecentTimestamp[timestampIndex] = timestamp;
+
+                    // Unlock bucket
+                    mBucketLocks[bucketLockIndex].unlock();
                 }
 
                 // Increment indices
                 dataIndexStart += mBucketSize;
                 dataIndexStop += mBucketSize;
             }
-
-            // Release the file lock
-            mFileLock.unlock();
 
             // Return true, signaling that the write was successful
             return true;
@@ -414,7 +446,7 @@ public class TaoServer {
                 } else if (messageType == MessageTypes.PROXY_INITIALIZE_REQUEST) {
                     TaoLogger.logDebug("Serving an initialize request");
                     if (mMostRecentTimestamp[0] != 0) {
-                        mMostRecentTimestamp = new long[2 << mServerTreeHeight];
+                        mMostRecentTimestamp = new long[(2 << (mServerTreeHeight + 1)) - 1 ];
                     }
 
                     // If the write was successful
