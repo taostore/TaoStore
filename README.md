@@ -1,6 +1,6 @@
 TaoStore
 ========
-This is an implementation of TaoStore (Cetin et al, S&P 2016) that is meant to be used for both research purposes, as well as for use in actual
+This is an implementation of TaoStore (Sahin et al., IEEE S&P 2016) that is meant to be used for both research purposes, as well as for use in actual
 real world applications.
 
 ***** 
