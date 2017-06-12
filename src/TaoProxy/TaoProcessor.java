@@ -59,6 +59,9 @@ public class TaoProcessor implements Processor {
     // Used to make sure that the writeback is only executed by one thread
     protected final transient ReentrantLock mWriteBackLock = new ReentrantLock();
 
+    // Used to prevent flushing while a snapshot of the subtree is taken for writeback
+    protected final transient ReentrantReadWriteLock mSubtreeRWL = new ReentrantReadWriteLock();
+
     // Write queue used to store which paths should be sent to server on next writeback
     protected Queue<Long> mWriteQueue;
 
@@ -742,6 +745,9 @@ public class TaoProcessor implements Processor {
 
     @Override
     public void flush(long pathID) {
+        // Take a subtree reader's lock
+        mSubtreeRWL.readLock().lock();
+
         TaoLogger.logInfo("Doing a flush for pathID " + pathID);
         // Increment the amount of times we have flushed
         mWriteBackCounter++;
@@ -804,6 +810,9 @@ public class TaoProcessor implements Processor {
 
         // Unlock the path
         pathToFlush.unlockPath();
+
+        // Release subtree reader's lock
+        mSubtreeRWL.readLock().unlock();
 
         // Add this path to the write queue
         synchronized (mWriteQueue) {
@@ -913,39 +922,47 @@ public class TaoProcessor implements Processor {
             // When a response is received from a server, this lock must be obtained to modify serverDidReturn
             Object returnLock = new Object();
 
+            // Deep copy of paths in subtree for writeback
+            Map<InetSocketAddress, List<Path>> wbPaths = new HashMap<>();
 
-            // Now we will send the writeback request to each server
+            // Take the subtree writer's lock
+            mSubtreeRWL.writeLock().lock();
+
+            // Make a deep copy of the needed paths from the subtree
             for (InetSocketAddress serverAddr : writebackMap.keySet()) {
-                // Increment and save current server index
-                serverIndex++;
-                final int serverIndexFinal = serverIndex;
 
                 // Get the list of paths to be written for the current server
                 List<Long> writebackPaths = writebackMap.get(serverAddr);
 
-                // Get all the encrypted path data
-                byte[] dataToWrite = null;
-                int pathSize = 0;
+                List<Path> paths = new ArrayList<Path>();
 
-                // TODO: Should this be a snapshot writeback? Good enough in most cases as the bytes are encrypted
-                // TODO: quickly after retrieving path, but ideally it should be
                 for (int i = 0; i < writebackPaths.size(); i++) {
                     // Get path
                     Path p = mSubtree.getPath(writebackPaths.get(i));
                     if (p != null) {
                         // Set the path to correspond to the relative leaf ID as present on the server to be written to
                         p.setPathID(mRelativeLeafMapper.get(p.getPathID()));
-
-                        // If this is the first path, don't need to concat the data
-                        if (dataToWrite == null) {
-                            dataToWrite = mCryptoUtil.encryptPath(p);
-                            pathSize = dataToWrite.length;
-                        } else {
-                            dataToWrite = Bytes.concat(dataToWrite, mCryptoUtil.encryptPath(p));
-                        }
+                        TaoPath pathCopy = new TaoPath();
+                        pathCopy.initFromPath(p);
+                        paths.add(pathCopy);
                         allWriteBackIDs.add(writebackPaths.get(i));
                     }
                 }
+            }
+
+            // Release the subtree writer's lock
+            mSubtreeRWL.writeLock().unlock();
+
+            // Now we will send the writeback request to each server
+            for (InetSocketAddress serverAddr : wbPaths.keySet()) {
+                // Increment and save current server index
+                serverIndex++;
+                final int serverIndexFinal = serverIndex;
+
+                List<Path> paths = wbPaths.get(serverAddr);
+                // Get all the encrypted path data
+                byte[] dataToWrite = null;
+                int pathSize = 0;
 
                 TaoLogger.logInfo("Going to do writeback");
 

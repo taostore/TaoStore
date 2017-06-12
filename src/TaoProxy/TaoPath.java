@@ -46,6 +46,19 @@ public class TaoPath implements Path {
         mPathBitmap = 0;
     }
 
+    public void initFromPath(Path path) {
+        mID = path.getPathID();
+
+        fillBitmap();
+
+        mBuckets = new Bucket[TaoConfigs.TREE_HEIGHT + 1];
+
+        for (int i = 0; i < mBuckets.length; i++) {
+            mBuckets[i] = new TaoBucket();
+            mBuckets[i].initFromBucket(path.getBuckets()[i]);
+        }
+    }
+
     @Override
     public void initFromSerialized(byte[] serialized) {
         mID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 0, 8));
