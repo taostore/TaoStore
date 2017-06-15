@@ -4,6 +4,8 @@ import java.net.*;
 import java.io.*;
 import java.nio.*;
 import java.nio.channels.*;
+
+import Configuration.TaoConfigs;
 import Heartbeats.Messages.*;
 
 public class HeartbeatNode implements Node {
@@ -17,7 +19,7 @@ public class HeartbeatNode implements Node {
             SocketChannel channel = null;
             while (channel == null) {
                 try {
-                    channel = SocketChannel.open(new InetSocketAddress("0.0.0.0", 5005));
+                    channel = SocketChannel.open(new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, 5005));
                 } catch (Exception e) {
 
                     try {

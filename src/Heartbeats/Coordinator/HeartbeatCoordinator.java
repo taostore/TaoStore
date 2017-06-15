@@ -63,12 +63,10 @@ public class HeartbeatCoordinator implements Coordinator {
 			// Take the mutex to ensure that no modifications are made to nodes
 			// or channels while checking this node
 			mutexLock.lock();
-            System.out.println("requester taking mutex");
 
             // Check if the last heartbeat was responded to
             if (!nodes.containsKey(addr)) {
                 mutexLock.unlock();
-                System.out.println("requester releasing mutex");
                 continue;
             }
 
@@ -77,14 +75,13 @@ public class HeartbeatCoordinator implements Coordinator {
 
                 if (node.isAvailable()) {
                     node.setAvailable(false);
-                    System.out.println("[" + System.currentTimeMillis() + "] Node at " + addr + " is not available");
+                    System.out.println("[" + System.currentTimeMillis() + " :: Node at " + addr + " is not available");
                 }
             }
 
             // Send the new heartbeat
             if (!channels.containsKey(addr)) {
                 mutexLock.unlock();
-                System.out.println("requester releasing mutex");
                 continue;
             }
 
@@ -102,7 +99,6 @@ public class HeartbeatCoordinator implements Coordinator {
 
 			// Release the mutex
 			mutexLock.unlock();
-            System.out.println("requester releasing mutex");
         }
 
         heartbeat.getAndIncrement();
@@ -119,7 +115,7 @@ public class HeartbeatCoordinator implements Coordinator {
                 sendHeartbeats();
             } else {
                 try {
-                    Thread.sleep(Math.min(remainingMillis, 3));
+                    Thread.sleep(Math.max(remainingMillis, 3));
                 } catch (InterruptedException e) {
                 }
             }
@@ -135,7 +131,7 @@ public class HeartbeatCoordinator implements Coordinator {
 
             ServerSocketChannel serverChannel = ServerSocketChannel.open();
             serverChannel.configureBlocking(false);
-            serverChannel.socket().bind(new InetSocketAddress("127.0.0.1", 5005));
+            serverChannel.socket().bind(new InetSocketAddress("0.0.0.0", 5005));
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
             System.out.println("Heartbeat coordinator serving on port 5005");
 
@@ -156,7 +152,6 @@ public class HeartbeatCoordinator implements Coordinator {
 						// Take the mutex to avoid messing up variables
 						// processed by the request thread
 						mutexLock.lock();
-						System.out.println("server taking mutex");
 						
                         if (key.isAcceptable()) {
                             SocketChannel channel = serverChannel.accept();
@@ -165,17 +160,15 @@ public class HeartbeatCoordinator implements Coordinator {
                             InetAddress remoteAddr = channel.socket().getInetAddress();
                             if (!nodes.containsKey(remoteAddr)) {
                                 mutexLock.unlock();
-                                System.out.println("server releasing mutex");
                                 continue;
                             }
                             channels.put(remoteAddr, channel);
-                            System.out.println("[" + System.currentTimeMillis() + "] Added channel from " + remoteAddr);
+                            System.out.println("[" + System.currentTimeMillis() + " :: Added channel from " + remoteAddr);
                         } else if (key.isReadable()) {
                             SocketChannel channel = (SocketChannel) key.channel();
                             InetAddress remoteAddr = channel.socket().getInetAddress();
                             if (!nodes.containsKey(remoteAddr)) {
                                 mutexLock.unlock();
-                                System.out.println("server releasing mutex");
                                 continue;
                             }
                             NodeStatus node = nodes.get(remoteAddr);
@@ -204,7 +197,6 @@ public class HeartbeatCoordinator implements Coordinator {
 
 						// Release the mutex
 						mutexLock.unlock();
-                        System.out.println("server releasing mutex");
                     }
                 } catch (IOException e) {
                     // Do something?
@@ -216,7 +208,6 @@ public class HeartbeatCoordinator implements Coordinator {
     }
 
     public void start() {
-        System.out.println("Starting Hearbeat Coordinator");
         Runnable requestProcedure = () -> requestThread();
         new Thread(requestProcedure).start();
         server();
