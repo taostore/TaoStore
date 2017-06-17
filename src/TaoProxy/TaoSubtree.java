@@ -240,6 +240,10 @@ public class TaoSubtree implements Subtree {
         // Keep track of current bucket
         SubtreeBucket currentBucket = mRoot;
 
+        if (mRoot == null) {
+            return null;
+        }
+
         // Visit each level of path
         for (Boolean right : pathDirection) {
             // Get either the right or left child depending on the path

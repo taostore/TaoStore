@@ -755,6 +755,13 @@ public class TaoProcessor implements Processor {
         // Get path that will be flushed
         Path pathToFlush = mSubtree.getPath(pathID);
 
+
+        if (pathToFlush == null) {
+            mSubtreeRWL.readLock().unlock();
+            return;
+        }
+
+
         // Lock every bucket on the path
         pathToFlush.lockPath();
 

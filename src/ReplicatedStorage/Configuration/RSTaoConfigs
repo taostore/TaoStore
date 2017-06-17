@@ -1,0 +1,14 @@
+## Additional Configuration for the Replicated Storage Model
+
+# Number of replicas needed for readPath operation
+read_path_quorum_size=2
+
+# Number of replicas needed for writeBack operation
+write_back_quorum_size=2
+
+num_storage_replicas=3
+
+# replicas 2 through n
+storage_hostname1_replica2=localhost
+storage_hostname1_replica3=localhost
+
