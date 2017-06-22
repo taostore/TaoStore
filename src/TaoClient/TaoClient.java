@@ -96,10 +96,25 @@ public class TaoClient implements Client {
             // Thread group used for asynchronous I/O
             mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
 
-            // Create and connect channel to proxy
-            mChannel = AsynchronousSocketChannel.open(mThreadGroup);
-            Future connection = mChannel.connect(mProxyAddress);
-            connection.get();
+            boolean connected = false;
+            while (!connected) {
+                try {
+                    // Create and connect channel to proxy
+                    mChannel = AsynchronousSocketChannel.open(mThreadGroup);
+                    Future connection = mChannel.connect(mProxyAddress);
+                    connection.get();
+                    connected = true;
+                } catch (Exception e) {
+                    try {
+                        mChannel.close();
+                    } catch (Exception e2) {
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e3) {
+                    }
+                }
+            }
 
             // Create executor
             mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
@@ -143,10 +158,25 @@ public class TaoClient implements Client {
             // Thread group used for asynchronous I/O
             mThreadGroup = AsynchronousChannelGroup.withFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
 
-            // Create and connect channel to proxy
-            mChannel = AsynchronousSocketChannel.open(mThreadGroup);
-            Future connection = mChannel.connect(mProxyAddress);
-            connection.get();
+            boolean connected = false;
+            while (!connected) {
+                try {
+                    // Create and connect channel to proxy
+                    mChannel = AsynchronousSocketChannel.open(mThreadGroup);
+                    Future connection = mChannel.connect(mProxyAddress);
+                    connection.get();
+                    connected = true;
+                } catch (Exception e) {
+                    try {
+                        mChannel.close();
+                    } catch (Exception e2) {
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e3) {
+                    }
+                }
+            }
 
             // Create executor
             mExecutor = Executors.newFixedThreadPool(TaoConfigs.PROXY_THREAD_COUNT, Executors.defaultThreadFactory());
@@ -519,9 +549,9 @@ public class TaoClient implements Client {
 
         TaoLogger.logForce("Going to start load test");
         long startTime = System.currentTimeMillis();
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < LOAD_SIZE; i++) {
             readOrWrite = r.nextInt(2);
-            targetBlock = r.nextInt(8) + 1;
+            targetBlock = r.nextInt(NUM_DATA_ITEMS) + 1;
 
             if (readOrWrite == 0) {
                 TaoLogger.logInfo("Doing read request #" + ((TaoClient) client).mRequestID.get() + " for block " + targetBlock);
@@ -557,8 +587,8 @@ public class TaoClient implements Client {
         }
         float average = total / ((float) sResponseTimes.size());
 
-
-        TaoLogger.logForce("Average response time was " + average + " ms");
+        // TODO: Fix this average
+        //TaoLogger.logForce("Average response time was " + average + " ms");
         TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
     }
 
@@ -566,16 +596,13 @@ public class TaoClient implements Client {
         // Random number generator
         SecureRandom r = new SecureRandom();
 
-        // Number of unique data items to operate on
-        int numDataItems = 1000;
-
         // Do a write for numDataItems blocks
         long blockID;
         ArrayList<byte[]> listOfBytes = new ArrayList<>();
 
         int requestID = 0;
         boolean writeStatus;
-        for (int i = 1; i <= numDataItems; i++) {
+        for (int i = 1; i <= NUM_DATA_ITEMS; i++) {
             TaoLogger.logInfo("Doing a write for block " + i);
             blockID = i;
             byte[] dataToWrite = new byte[TaoConfigs.BLOCK_SIZE];
@@ -602,7 +629,7 @@ public class TaoClient implements Client {
         long startTime = System.currentTimeMillis();
         for (int i = 0; i < LOAD_SIZE; i++) {
             readOrWrite = r.nextInt(2);
-            targetBlock = r.nextInt(numDataItems) + 1;
+            targetBlock = r.nextInt(NUM_DATA_ITEMS) + 1;
 
             if (readOrWrite == 0) {
                 TaoLogger.logInfo("Doing read request #" + ((TaoClient) client).mRequestID.get());
@@ -728,4 +755,6 @@ public class TaoClient implements Client {
 
         return;
     }
+
+
 }

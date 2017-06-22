@@ -749,8 +749,7 @@ public class TaoProcessor implements Processor {
         mSubtreeRWL.readLock().lock();
 
         TaoLogger.logInfo("Doing a flush for pathID " + pathID);
-        // Increment the amount of times we have flushed
-        mWriteBackCounter++;
+
 
         // Get path that will be flushed
         Path pathToFlush = mSubtree.getPath(pathID);
@@ -825,6 +824,8 @@ public class TaoProcessor implements Processor {
         synchronized (mWriteQueue) {
             TaoLogger.logInfo("Adding " + pathID + " to mWriteQueue");
             mWriteQueue.add(pathID);
+            // Increment the amount of times we have flushed
+            mWriteBackCounter++;
         }
     }
 

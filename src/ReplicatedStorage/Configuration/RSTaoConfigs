@@ -9,6 +9,5 @@ write_back_quorum_size=2
 num_storage_replicas=3
 
 # replicas 2 through n
-storage_hostname1_replica2=localhost
-storage_hostname1_replica3=localhost
-
+storage_hostname1_replica2=10.138.0.2
+storage_hostname1_replica3=10.138.0.5

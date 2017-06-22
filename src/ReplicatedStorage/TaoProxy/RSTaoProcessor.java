@@ -32,6 +32,7 @@ public class RSTaoProcessor extends TaoProcessor {
     // Will be used to protect access to mReadPathResponses.
     protected final transient ReentrantLock mReadPathResponsesLock = new ReentrantLock();
 
+
     // Position map which keeps track of what leaf each block corresponds to
     protected RSTaoPositionMap mRSPositionMap;
 
@@ -138,6 +139,11 @@ public class RSTaoProcessor extends TaoProcessor {
 
                 for (ServerResponse serverResponse : responses) {
                     byte[] encryptedPathBytes = serverResponse.getPathBytes();
+                    if (encryptedPathBytes == null) {
+                        for (ServerResponse serverResponse2 : responses) {
+                            TaoLogger.logForce(serverResponse2.toString() + ", " + serverResponse2.getPathID() + ", " + serverResponse2.getWriteStatus());
+                        }
+                    }
                     Path decryptedPath = mCryptoUtil.decryptPath(encryptedPathBytes);
                     decryptedPath.setPathID(serverResponse.getPathID());
                     responsePaths.add(decryptedPath);
@@ -523,25 +529,29 @@ public class RSTaoProcessor extends TaoProcessor {
             // Needed in order to clean up subtree later
             List<Long> allWriteBackIDs = new ArrayList<>();
 
-            // Get the first TaoConfigs.WRITE_BACK_THRESHOLD path IDs from the mWriteQueue and place them in the map
-            for (int i = 0; i < TaoConfigs.WRITE_BACK_THRESHOLD; i++) {
-                // Get a path ID
-                Long currentID;
-                synchronized (mWriteQueue) {
-                    currentID = mWriteQueue.remove();
-                }
-                TaoLogger.logInfo("Writeback for path id " + currentID + " with timestamp " + finalWriteBackTime);
+            synchronized (mWriteQueue) {
 
-                // Select a quorum of servers that are responsible for this path
-                for (InetSocketAddress isa : chooseQuorum(mRSPositionMap.getServersForPosition(currentID), RSTaoConfigs.WRITE_BACK_QUORUM_SIZE)) {
-                    // Add this path ID to the map
-                    List<Long> temp = writebackMap.get(isa);
-                    if (temp == null) {
-                        temp = new ArrayList<>();
-                        writebackMap.put(isa, temp);
+                // Get the first TaoConfigs.WRITE_BACK_THRESHOLD path IDs from the mWriteQueue and place them in the map
+                for (int i = 0; i < TaoConfigs.WRITE_BACK_THRESHOLD; i++) {
+                    // Get a path ID
+                    Long currentID;
+
+                    currentID = mWriteQueue.remove();
+
+                    TaoLogger.logInfo("Writeback for path id " + currentID + " with timestamp " + finalWriteBackTime);
+
+                    // Select a quorum of servers that are responsible for this path
+                    for (InetSocketAddress isa : chooseQuorum(mRSPositionMap.getServersForPosition(currentID), RSTaoConfigs.WRITE_BACK_QUORUM_SIZE)) {
+                        // Add this path ID to the map
+                        List<Long> temp = writebackMap.get(isa);
+                        if (temp == null) {
+                            temp = new ArrayList<>();
+                            writebackMap.put(isa, temp);
+                        }
+                        temp.add(currentID);
                     }
-                    temp.add(currentID);
                 }
+
             }
 
             // Current storage server we are targeting (corresponds to index into list of storage servers)
@@ -555,6 +565,9 @@ public class RSTaoProcessor extends TaoProcessor {
 
             // Deep copy of paths in subtree for writeback
             Map<InetSocketAddress, List<Path>> wbPaths = new HashMap<>();
+
+
+            //TaoProxy.mSubtreeLock.lock();
 
             // Take the subtree writer's lock
             mSubtreeRWL.writeLock().lock();
@@ -585,6 +598,8 @@ public class RSTaoProcessor extends TaoProcessor {
 
             // Release the subtree writer's lock
             mSubtreeRWL.writeLock().unlock();
+
+            //TaoProxy.mSubtreeLock.unlock();
 
             // Now we will send the writeback request to each server
             for (InetSocketAddress serverAddr : wbPaths.keySet()) {
@@ -720,7 +735,11 @@ public class RSTaoProcessor extends TaoProcessor {
 
                                                     // If all the servers have successfully responded, we can delete nodes from subtree
                                                     if (allReturn) {
+
+
                                                         TaoLogger.logWarning("Write Back Operation Successful");
+
+                                                        //TaoProxy.mSubtreeLock.lock();
                                                         // Iterate through every path that was written, check if there are any nodes
                                                         // we can delete
                                                         for (Long pathID : allWriteBackIDs) {
@@ -733,6 +752,8 @@ public class RSTaoProcessor extends TaoProcessor {
                                                             }
                                                             mSubtree.deleteNodes(pathID, finalWriteBackTime, set);
                                                         }
+
+                                                        //TaoProxy.mSubtreeLock.unlock();
                                                     }
                                                 }
                                             } else {

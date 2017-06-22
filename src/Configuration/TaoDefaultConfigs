@@ -4,16 +4,16 @@
 oram_file=oram.txt
 
 # Amount of threads to be used for asynchronous I/O
-proxy_thread_count=25
+proxy_thread_count=10
 
 # The writeback threshold for the proxy
-write_back_threshold=40
+write_back_threshold=10
 
 # Client port
 client_port=12337
 
 # Proxy hostname and port
-proxy_hostname=localhost
+proxy_hostname=10.138.0.4
 proxy_port=12339
 
 # Size of blocks
@@ -31,7 +31,7 @@ block_meta_data_size=8
 iv_size=16
 
 # The minimum desired size for storage in MB
-min_server_size=3
+min_server_size=10
 
 # The amount of storage servers
 num_storage_servers=1
@@ -40,7 +40,7 @@ num_storage_servers=1
 server_port=12338
 
 # name of all the servers, postfixed by a number
-storage_hostname1=localhost
+storage_hostname1=10.138.0.3
 # storage_hostname2=192.168.0.1
 # storage_hostname3=10.138.2.1
 # etc.

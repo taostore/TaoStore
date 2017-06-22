@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @brief Class that represents the proxy which handles requests from clients and replies from servers
@@ -52,6 +53,9 @@ public class TaoProxy implements Proxy {
 
     // A position map
     protected PositionMap mPositionMap;
+
+
+    //public static final transient ReentrantLock mSubtreeLock = new ReentrantLock();
 
     /**
      * @brief Default constructor
@@ -260,8 +264,10 @@ public class TaoProxy implements Proxy {
     public void onReceiveResponse(ClientRequest req, ServerResponse resp, boolean isFakeRead) {
         // When a response is received, the processor will answer the request, flush the path, then may perform a
         // write back
+        //mSubtreeLock.lock();
         mProcessor.answerRequest(req, resp, isFakeRead);
         mProcessor.flush(resp.getPathID());
+        //mSubtreeLock.unlock();
         mProcessor.writeBack(TaoConfigs.WRITE_BACK_THRESHOLD);
     }
 

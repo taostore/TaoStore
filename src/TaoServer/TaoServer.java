@@ -12,11 +12,14 @@ import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
+
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -43,6 +46,11 @@ public class TaoServer implements Server {
 
     // We will lock at a bucket level when operating on file
     protected ReentrantLock[] mBucketLocks;
+    
+    // A CryptoUtil
+    protected CryptoUtil mCryptoUtil;
+
+    protected final transient ReentrantLock diskSeekLock = new ReentrantLock();
 
 
     /**
@@ -51,10 +59,13 @@ public class TaoServer implements Server {
     public TaoServer(MessageCreator messageCreator) {
         try {
             // Trace
-            TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
+            TaoLogger.logLevel = TaoLogger.LOG_WARNING;
 
             // No passed in properties file, will use defaults
             TaoConfigs.initConfiguration();
+            
+            // Create a CryptoUtil
+            mCryptoUtil = new TaoCryptoUtil();
 
             // Calculate the height of the tree that this particular server will store
             mServerTreeHeight = TaoConfigs.STORAGE_SERVER_TREE_HEIGHT;
@@ -115,11 +126,15 @@ public class TaoServer implements Server {
             // Lock appropriate bucket
             mBucketLocks[bucketLockIndex].lock();
 
+            diskSeekLock.lock();
+
             // Seek into the file
             mDiskFile.seek(offset);
 
             // Read bytes from the disk file into the byte array for this bucket
             mDiskFile.readFully(pathInBytes[currentBucket]);
+
+            diskSeekLock.unlock();
 
             // Unlock appropriate bucket
             mBucketLocks[bucketLockIndex].unlock();
@@ -146,11 +161,29 @@ public class TaoServer implements Server {
                 // Lock bucket
                 mBucketLocks[bucketLockIndex].lock();
 
+                diskSeekLock.lock();
+
                 // Seek into file
                 mDiskFile.seek(offset);
 
                 // Read bytes from the disk file into the byte array for this bucket
                 mDiskFile.readFully(pathInBytes[currentBucket]);
+
+                diskSeekLock.unlock();
+
+                // Decrypt the serialization of the bucket
+                byte[] decryptedBucket = mCryptoUtil.decrypt(pathInBytes[currentBucket]);
+
+                // Cut off padding
+                decryptedBucket = Arrays.copyOf(decryptedBucket, TaoConfigs.BUCKET_SIZE);
+
+                // Add bucket to path
+                TaoBucket b = new TaoBucket();
+                b.initFromSerialized(decryptedBucket);
+                TaoLogger.logDebug("path " + pathID + ", read disk level " + currentBucket + " [" + b.getBlocks()[0].getBlockID()
+                        + ", " + b.getBlocks()[1].getBlockID()
+                        + ", " + b.getBlocks()[2].getBlockID()
+                        + ", " + b.getBlocks()[3].getBlockID() + "]");
 
                 // Unlock bucket
                 mBucketLocks[bucketLockIndex].unlock();
@@ -203,11 +236,13 @@ public class TaoServer implements Server {
             // The current timestamp we are checking
             int timestampIndex = 0;
 
+            // Lock bucket
+            mBucketLocks[bucketLockIndex].lock();
+
             // Check to see what the timestamp is for the root
             if (timestamp >= mMostRecentTimestamp[timestampIndex]) {
 
-                // Lock bucket
-                mBucketLocks[bucketLockIndex].lock();
+                diskSeekLock.lock();
 
                 // Seek into file
                 mDiskFile.seek(offsetInDisk);
@@ -215,12 +250,15 @@ public class TaoServer implements Server {
                 // Write bucket to disk
                 mDiskFile.write(Arrays.copyOfRange(data, dataIndexStart, dataIndexStop));
 
+                diskSeekLock.unlock();
+
                 // Update timestamp
                 mMostRecentTimestamp[timestampIndex] = timestamp;
 
-                // Unlock bucket
-                mBucketLocks[bucketLockIndex].unlock();
             }
+
+            // Unlock bucket
+            mBucketLocks[bucketLockIndex].unlock();
 
             // Keep track of bucket size
             int mBucketSize = (int) TaoConfigs.ENCRYPTED_BUCKET_SIZE;
@@ -228,6 +266,8 @@ public class TaoServer implements Server {
             // Increment indices
             dataIndexStart += mBucketSize;
             dataIndexStop += mBucketSize;
+
+            int level = 1;
 
             // Write the rest of the buckets
             for (Boolean right : pathDirection) {
@@ -249,10 +289,13 @@ public class TaoServer implements Server {
                 // Get the data for the current bucket to be writen
                 byte[] dataToWrite = Arrays.copyOfRange(data, dataIndexStart, dataIndexStop);
 
+                // Lock bucket
+                mBucketLocks[bucketLockIndex].lock();
+
                 // Check to see that we have the newest version of bucket
                 if (timestamp >= mMostRecentTimestamp[timestampIndex]) {
-                    // Lock bucket
-                    mBucketLocks[bucketLockIndex].lock();
+
+                    diskSeekLock.lock();
 
                     // Seek into disk
                     mDiskFile.seek(offsetInDisk);
@@ -260,12 +303,30 @@ public class TaoServer implements Server {
                     // Write bucket to disk
                     mDiskFile.write(dataToWrite);
 
+                    diskSeekLock.unlock();
+
+                    // Decrypt the serialization of the bucket
+                     byte[] decryptedBucket = mCryptoUtil.decrypt(dataToWrite);
+
+                    // Cut off padding
+                    decryptedBucket = Arrays.copyOf(decryptedBucket, TaoConfigs.BUCKET_SIZE);
+
+                    // Add bucket to path
+                    TaoBucket b = new TaoBucket();
+                    b.initFromSerialized(decryptedBucket);
+                    TaoLogger.logDebug("path " + pathID + ", write disk level " + level + " [" + b.getBlocks()[0].getBlockID()
+                            + ", " + b.getBlocks()[1].getBlockID()
+                            + ", " + b.getBlocks()[2].getBlockID()
+                            + ", " + b.getBlocks()[3].getBlockID() + "]");
                     // Update timestamp
                     mMostRecentTimestamp[timestampIndex] = timestamp;
 
-                    // Unlock bucket
-                    mBucketLocks[bucketLockIndex].unlock();
                 }
+
+                level++;
+
+                // Unlock bucket
+                mBucketLocks[bucketLockIndex].unlock();
 
                 // Increment indices
                 dataIndexStart += mBucketSize;
@@ -377,6 +438,20 @@ public class TaoServer implements Server {
                     readResponse.setPathID(proxyReq.getPathID());
                     readResponse.setPathBytes(returnPathData);
 
+                    byte[] pathBytes = Longs.toByteArray(proxyReq.getPathID());
+                    pathBytes = Bytes.concat(pathBytes, returnPathData);
+
+                    Path decryptedPath = mCryptoUtil.decryptPath(returnPathData);
+
+                    List<Long> bids = new ArrayList<>();
+                    for (int i = 0; i < decryptedPath.getBuckets().length; i++) {
+                        Bucket bucket = decryptedPath.getBuckets()[i];
+                        for (Block b : bucket.getBlocks()) {
+                            bids.add(b.getBlockID());
+                        }
+                    }
+                    TaoLogger.logDebug("Returning path " + decryptedPath.getPathID() + " with block IDs: " + bids);
+
                     // Create server response data and header
                     serializedResponse = readResponse.serialize();
                     messageTypeAndLength = Bytes.concat(Ints.toByteArray(MessageTypes.SERVER_RESPONSE), Ints.toByteArray(serializedResponse.length));
@@ -410,6 +485,25 @@ public class TaoServer implements Server {
                             // Get the current path and path id from the data to write
                             // TODO: Generalize this somehow, possibly add a method to ProxyRequest
                             currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
+                            
+                            Path taoPath = mCryptoUtil.decryptPath(currentPath);
+                            List<String> buckets = new ArrayList<>();
+                            for (Bucket b : taoPath.getBuckets()) {
+                                Block[] blocks = b.getBlocks();
+                                String bucketStr = "[" + blocks[0].getBlockID() + ", " + blocks[1].getBlockID() + ", " + blocks[2].getBlockID() + ", " + blocks[3].getBlockID() + "]";
+                                buckets.add(bucketStr);
+                            }
+                            
+                            String pathStr = "{";
+                            for (int i = 0; i < buckets.size(); i++) {
+                                pathStr += buckets.get(i);
+                                if (i != buckets.size() - 1)
+                                    pathStr += ", ";
+                            }
+                            pathStr += "}";
+                            
+                            TaoLogger.logDebug("Writing path id " + taoPath.getPathID() + ": " + pathStr);
+                            
                             currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
                             encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
 
@@ -466,6 +560,9 @@ public class TaoServer implements Server {
                         currentPath = Arrays.copyOfRange(dataToWrite, startIndex, endIndex);
                         currentPathID = Longs.fromByteArray(Arrays.copyOfRange(currentPath, 0, 8));
                         encryptedPath = Arrays.copyOfRange(currentPath, 8, currentPath.length);
+                        TaoPath path = new TaoPath(currentPathID);
+                        path.initFromSerialized(encryptedPath);
+                        //path.print();
 
                         // Write path
                         TaoLogger.logDebug("Going to writepath " + currentPathID + " with timestamp " + proxyReq.getTimestamp());
