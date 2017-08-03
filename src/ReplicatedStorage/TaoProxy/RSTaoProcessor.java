@@ -32,12 +32,10 @@ public class RSTaoProcessor extends TaoProcessor {
     // Will be used to protect access to mReadPathResponses.
     protected final transient ReentrantLock mReadPathResponsesLock = new ReentrantLock();
 
-
     // Position map which keeps track of what leaf each block corresponds to
     protected RSTaoPositionMap mRSPositionMap;
 
     protected HeartbeatCoordinator mHeartbeatCoordinator;
-
 
     public RSTaoProcessor(Proxy proxy,
                           Sequencer sequencer,
@@ -47,8 +45,9 @@ public class RSTaoProcessor extends TaoProcessor {
                           CryptoUtil cryptoUtil,
                           Subtree subtree,
                           PositionMap positionMap,
-                          Map<Long, Long> relativeMapper) {
-        super(proxy, sequencer, threadGroup, messageCreator, pathCreator, cryptoUtil, subtree, positionMap, relativeMapper);
+                          Map<Long, Long> relativeMapper,
+                          Profiler profiler) {
+        super(proxy, sequencer, threadGroup, messageCreator, pathCreator, cryptoUtil, subtree, positionMap, relativeMapper, profiler);
         mReadPathResponses = new HashMap<>();
         mRSPositionMap = new RSTaoPositionMap(RSTaoConfigs.ALL_SERVERS);
 
@@ -121,19 +120,23 @@ public class RSTaoProcessor extends TaoProcessor {
                                              boolean fakeRead) {
         try {
 
-            mReadPathResponsesLock.lock();
+            List<ServerResponse> responses;
 
-            List<ServerResponse> responses = mReadPathResponses.getOrDefault(req, null);
-            if (responses == null) {
-                responses = new ArrayList<>();
+            synchronized (mReadPathResponses) {
+
+                responses = mReadPathResponses.getOrDefault(req, null);
+                if (responses == null) {
+                    responses = new ArrayList<>();
+                }
+                responses.add(resp);
+
+                mReadPathResponses.put(req, responses);
+
             }
-            responses.add(resp);
-
-            mReadPathResponses.put(req, responses);
 
             TaoLogger.logDebug("Number of responses: " + mReadPathResponses.get(req).size());
 
-            if (responses.size() >= RSTaoConfigs.READ_PATH_QUORUM_SIZE) {
+            if (responses.size() == RSTaoConfigs.READ_PATH_QUORUM_SIZE) {
 
                 ArrayList<Path> responsePaths = new ArrayList<Path>();
 
@@ -152,12 +155,18 @@ public class RSTaoProcessor extends TaoProcessor {
                 TaoPath newPath = selectBuckets(responsePaths);
                 resp.setPathBytes(mCryptoUtil.encryptPath(newPath));
 
+                mProfiler.readPathComplete(req);
+
                 // Send response to proxy
                 Runnable serializeProcedure = () -> mProxy.onReceiveResponse(req, resp, fakeRead);
                 new Thread(serializeProcedure).start();
+
+                synchronized (mReadPathResponses) {
+                    mReadPathResponses.remove(req);
+                }
             }
 
-            mReadPathResponsesLock.unlock();
+
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -167,6 +176,8 @@ public class RSTaoProcessor extends TaoProcessor {
 
     @Override
     public void readPath(ClientRequest req) {
+        mProfiler.readPathStart(req);
+
         try {
             TaoLogger.logInfo("Starting a readPath for blockID " + req.getBlockID() + " and request #" + req.getRequestID());
 
@@ -266,8 +277,10 @@ public class RSTaoProcessor extends TaoProcessor {
                 // Serialize request
                 byte[] requestData = proxyRequest.serialize();
 
+                mProfiler.readPathPreSend(targetServer, req);
+
                 // Claim either the dedicated channel or create a new one if the dedicated channel is already being used
-                if (false && serverSemaphoreMap.get(targetServer).tryAcquire()) {
+                if (serverSemaphoreMap.get(targetServer).tryAcquire()) {
                     // First we send the message type to the server along with the size of the message
                     byte[] messageType = MessageUtility.createMessageHeaderBytes(MessageTypes.PROXY_READ_REQUEST, requestData.length);
                     ByteBuffer entireMessage = ByteBuffer.wrap(Bytes.concat(messageType, requestData));
@@ -290,6 +303,9 @@ public class RSTaoProcessor extends TaoProcessor {
                                 @Override
                                 public void completed(Integer result,
                                                       Void attachment) {
+                                    // profiling
+                                    mProfiler.readPathPostRecv(targetServer, req);
+
                                     // Make sure we read the entire message
                                     while (messageTypeAndSize.remaining() > 0) {
                                         channelToServer.read(messageTypeAndSize, null, this);
@@ -335,6 +351,8 @@ public class RSTaoProcessor extends TaoProcessor {
                                                 // Set absolute path ID
                                                 response.setPathID(absoluteFinalPathID);
 
+                                                long serverProcessingTime = response.getProcessingTime();
+                                                mProfiler.readPathServerProcessingTime(targetServer, req, serverProcessingTime);
 
                                                 // Send response to proxy
                                                 Runnable serializeProcedure = () -> onReceiveReadPathResponse(req, response, fakeRead);
@@ -394,6 +412,9 @@ public class RSTaoProcessor extends TaoProcessor {
                                         @Override
                                         public void completed(Integer result,
                                                               Void attachment) {
+                                            // profiling
+                                            mProfiler.readPathPostRecv(targetServer, req);
+
                                             // Make sure we read the entire message
                                             while (messageTypeAndSize.remaining() > 0) {
                                                 newChannelToServer.read(messageTypeAndSize, null, this);
@@ -442,6 +463,9 @@ public class RSTaoProcessor extends TaoProcessor {
 
                                                         // Set absolute path ID
                                                         response.setPathID(absoluteFinalPathID);
+
+                                                        long serverProcessingTime = response.getProcessingTime();
+                                                        mProfiler.readPathServerProcessingTime(targetServer, req, serverProcessingTime);
 
                                                         // Send response to proxy
                                                         Runnable serializeProcedure = () -> onReceiveReadPathResponse(req, response, fakeRead);
@@ -522,8 +546,10 @@ public class RSTaoProcessor extends TaoProcessor {
         // Make another variable for the write back time because Java says so
         long finalWriteBackTime = writeBackTime;
 
+        mProfiler.writeBackStart(finalWriteBackTime);
+
         try {
-            // Create a map that will map each InetSockerAddress to a list of paths that will be written to it
+            // Create a map that will map each InetSocketAddress to a list of paths that will be written to it
             Map<InetSocketAddress, List<Long>> writebackMap = new HashMap<>();
 
             // Needed in order to clean up subtree later
@@ -588,6 +614,14 @@ public class RSTaoProcessor extends TaoProcessor {
                         p.setPathID(mRelativeLeafMapper.get(p.getPathID()));
                         TaoPath pathCopy = new TaoPath();
                         pathCopy.initFromPath(p);
+
+                        /* Log which blocks are in the snapshot */
+                        for (Bucket bucket : pathCopy.getBuckets()) {
+                            for (Block b : bucket.getFilledBlocks()) {
+                                TaoLogger.logBlock(b.getBlockID(), "snapshot add");
+                            }
+                        }
+
                         paths.add(pathCopy);
                         allWriteBackIDs.add(writebackPaths.get(i));
                     }
@@ -598,8 +632,6 @@ public class RSTaoProcessor extends TaoProcessor {
 
             // Release the subtree writer's lock
             mSubtreeRWL.writeLock().unlock();
-
-            //TaoProxy.mSubtreeLock.unlock();
 
             // Now we will send the writeback request to each server
             for (InetSocketAddress serverAddr : wbPaths.keySet()) {
@@ -648,6 +680,8 @@ public class RSTaoProcessor extends TaoProcessor {
                     try {
                         TaoLogger.logDebug("Going to do writeback for server " + serverIndexFinal);
 
+                        mProfiler.writeBackPreSend(serverAddr, finalWriteBackTime);
+
                         // Create channel and connect to server
                         AsynchronousSocketChannel channel = AsynchronousSocketChannel.open(mThreadGroup);
                         Future connection = channel.connect(serverAddr);
@@ -678,6 +712,9 @@ public class RSTaoProcessor extends TaoProcessor {
                             @Override
                             public void completed(Integer result,
                                                   Void attachment) {
+                                // profiling
+                                mProfiler.writeBackPostRecv(serverAddr, finalWriteBackTime);
+
                                 // Flip the byte buffer for reading
                                 messageTypeAndSize.flip();
 
@@ -717,6 +754,9 @@ public class RSTaoProcessor extends TaoProcessor {
                                             ServerResponse response = mMessageCreator.createServerResponse();
                                             response.initFromSerialized(serialized);
 
+                                            long serverProcessingTime = response.getProcessingTime();
+                                            mProfiler.writeBackServerProcessingTime(serverAddr, finalWriteBackTime, serverProcessingTime);
+
                                             // Check to see if the write succeeded or not
                                             if (response.getWriteStatus()) {
                                                 // Acquire return lock
@@ -736,6 +776,9 @@ public class RSTaoProcessor extends TaoProcessor {
                                                     // If all the servers have successfully responded, we can delete nodes from subtree
                                                     if (allReturn) {
 
+                                                        TaoLogger.logDebug("All servers returned for writeBack #: " + finalWriteBackTime);
+
+                                                        mProfiler.writeBackComplete(finalWriteBackTime);
 
                                                         TaoLogger.logWarning("Write Back Operation Successful");
 

@@ -16,4 +16,7 @@ public class MessageTypes {
 
     // For testing
     public static final int PRINT_SUBTREE = 11;
+
+    // For profiling
+    public static final int WRITE_STATS = 12;
 }

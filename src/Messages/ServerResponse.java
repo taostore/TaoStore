@@ -47,6 +47,18 @@ public interface ServerResponse {
     void setIsWrite(boolean status);
 
     /**
+     * @brief Get the server processing time
+     * @return
+     */
+    long getProcessingTime();
+
+    /**
+     * @brief Set the server processing time
+     * @param processingTime
+     */
+    void setProcessingTime(long processingTime);
+
+    /**
      * @brief Method to serialize ServerResponse into bytes
      * @return byte representation of ServerResponse
      */

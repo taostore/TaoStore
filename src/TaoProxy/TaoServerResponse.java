@@ -21,6 +21,9 @@ public class TaoServerResponse implements ServerResponse {
     // The data that was requested on a read
     private byte[] mEncryptedPath;
 
+    // Processing time on the server
+    private long mProcessingTime;
+
     /**
      * @brief Default constructor
      */
@@ -28,6 +31,7 @@ public class TaoServerResponse implements ServerResponse {
         mWriteStatus = false;
         mPathID = -1;
         mEncryptedPath = null;
+        mProcessingTime = -1;
     }
 
     @Override
@@ -35,11 +39,13 @@ public class TaoServerResponse implements ServerResponse {
         int type = Ints.fromByteArray(Arrays.copyOfRange(serialized, 0, 4));
         mWriteStatus = type == 1 ? true : false;
 
-        // If the the length of the serialization is greater than 4, this was a read request
-        if (serialized.length > 4) {
-            mPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
-            mEncryptedPath = Arrays.copyOfRange(serialized, 12, serialized.length);
+        // If the the length of the serialization is greater than 12, this was a read request
+        if (serialized.length > 12) {
+            mProcessingTime = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
+            mPathID = Longs.fromByteArray(Arrays.copyOfRange(serialized, 12, 20));
+            mEncryptedPath = Arrays.copyOfRange(serialized, 20, serialized.length);
         } else {
+            mProcessingTime = Longs.fromByteArray(Arrays.copyOfRange(serialized, 4, 12));
             mEncryptedPath = null;
         }
     }
@@ -75,15 +81,26 @@ public class TaoServerResponse implements ServerResponse {
     }
 
     @Override
+    public long getProcessingTime() {
+        return mProcessingTime;
+    }
+
+    @Override
+    public void setProcessingTime(long processingTime) {
+        mProcessingTime = processingTime;
+    }
+
+    @Override
     public byte[] serialize() {
         int writeInt = mWriteStatus ? 1 : 0;
         byte[] writeBytes = Ints.toByteArray(writeInt);
+        byte[] processingTimeBytes = Longs.toByteArray(mProcessingTime);
 
         if (mEncryptedPath != null) {
             byte[] pathIDBytes = Longs.toByteArray(mPathID);
-            return Bytes.concat(writeBytes, pathIDBytes, mEncryptedPath);
+            return Bytes.concat(writeBytes, processingTimeBytes, pathIDBytes, mEncryptedPath);
         } else {
-            return writeBytes;
+            return Bytes.concat(writeBytes, processingTimeBytes);
         }
     }
 }

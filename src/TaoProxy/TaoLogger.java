@@ -15,6 +15,7 @@ public class TaoLogger {
     public static int LOG_ERROR = 3;
 
 
+    public static boolean BLOCK_DEBUG = false;
 
     /**
      * @brief Force a message to log regardless of level
@@ -72,6 +73,17 @@ public class TaoLogger {
     public static void logError(String message) {
         if (logLevel <= LOG_ERROR) {
             System.out.println(System.currentTimeMillis() + " :: " + message);
+        }
+    }
+
+    /**
+     * Used to track block movement throughout the system
+     * @param blockID
+     * @param message
+     */
+    public static void logBlock(long blockID, String message) {
+        if (BLOCK_DEBUG) {
+            System.out.println(System.currentTimeMillis() + "::[bid " + blockID + "]::" + message);
         }
     }
 }

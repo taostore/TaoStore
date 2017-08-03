@@ -1,5 +1,6 @@
 package TaoProxy;
 
+import Messages.ClientRequest;
 import Messages.MessageTypes;
 import Messages.ProxyRequest;
 import com.google.common.primitives.Bytes;
@@ -7,6 +8,7 @@ import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * @brief IImplementation of a class that implements the ProxyRequest message type
@@ -111,6 +113,31 @@ public class TaoProxyRequest implements ProxyRequest {
     @Override
     public void setDataToWrite(byte[] data) {
         mDataToWrite = data;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if ( ! (obj instanceof ClientRequest) ) {
+            return false;
+        }
+
+        if (obj == this) {
+            return true;
+        }
+
+        // Two requests are equal if they have the same request type and timestamp
+        TaoProxyRequest rhs = (TaoProxyRequest) obj;
+
+        if (mType != rhs.getType() || mTimestamp != rhs.getTimestamp()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(mType, mTimestamp);
     }
 
     @Override

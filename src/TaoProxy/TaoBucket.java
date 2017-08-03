@@ -123,6 +123,7 @@ public class TaoBucket implements Bucket {
 
             // Update the timestamp of add was successful
             if (success) {
+                TaoLogger.logBlock(block.getBlockID(), "subtree add");
                 mUpdateTime = time;
             }
         } finally {

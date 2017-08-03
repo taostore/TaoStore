@@ -20,7 +20,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @brief Class that represents the proxy which handles requests from clients and replies from servers
@@ -54,6 +53,8 @@ public class TaoProxy implements Proxy {
     // A position map
     protected PositionMap mPositionMap;
 
+    // A Profiler to store timing information
+    public Profiler mProfiler;
 
     //public static final transient ReentrantLock mSubtreeLock = new ReentrantLock();
 
@@ -73,6 +74,9 @@ public class TaoProxy implements Proxy {
         try {
             // For trace purposes
             TaoLogger.logLevel = TaoLogger.LOG_OFF;
+
+            // For profiling purposes
+            mProfiler = new TaoProfiler();
 
             // Initialize needed constants
             TaoConfigs.initConfiguration();
@@ -110,7 +114,7 @@ public class TaoProxy implements Proxy {
 
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
-            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
+            mProcessor = new TaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper, mProfiler);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -127,6 +131,9 @@ public class TaoProxy implements Proxy {
         try {
             // For trace purposes
             TaoLogger.logLevel = TaoLogger.LOG_DEBUG;
+
+            // For profiling purposes
+            mProfiler = new TaoProfiler();
 
             // Initialize needed constants
            // TaoConfigs.initConfiguration(minServerSize);
@@ -372,6 +379,8 @@ public class TaoProxy implements Proxy {
                     } else if (messageType == MessageTypes.PRINT_SUBTREE) {
                         // Print the subtree, used for debugging
                         mSubtree.printSubtree();
+                    } else if (messageType == MessageTypes.WRITE_STATS) {
+                        mProfiler.writeStatistics();
                     }
                 }
                 @Override

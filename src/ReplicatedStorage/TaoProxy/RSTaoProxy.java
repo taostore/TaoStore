@@ -20,7 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class RSTaoProxy extends TaoProxy {
 
@@ -37,6 +36,9 @@ public class RSTaoProxy extends TaoProxy {
         try {
             // For trace purposes
             TaoLogger.logLevel = TaoLogger.LOG_WARNING;
+
+            // For profiling purposes
+            mProfiler = new TaoProfiler();
 
             // Initialize needed constants
             TaoConfigs.initConfiguration();
@@ -76,7 +78,7 @@ public class RSTaoProxy extends TaoProxy {
 
             // Initialize the sequencer and proxy
             mSequencer = new TaoSequencer(mMessageCreator, mPathCreator);
-            mProcessor = new RSTaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper);
+            mProcessor = new RSTaoProcessor(this, mSequencer, mThreadGroup, mMessageCreator, mPathCreator, mCryptoUtil, mSubtree, mPositionMap, mRelativeLeafMapper, mProfiler);
         } catch (Exception e) {
             e.printStackTrace();
         }

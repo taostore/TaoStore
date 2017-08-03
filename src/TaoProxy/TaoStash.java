@@ -31,6 +31,7 @@ public class TaoStash implements Stash {
     @Override
     public void addBlock(Block b) {
         mStash.put(b.getBlockID(), b);
+        TaoLogger.logBlock(b.getBlockID(), "Stash add");
     }
 
     @Override
@@ -42,6 +43,7 @@ public class TaoStash implements Stash {
     public void removeBlock(Block b) {
         if (mStash.containsKey(b.getBlockID())) {
             mStash.remove(b.getBlockID());
+            TaoLogger.logBlock(b.getBlockID(), "Stash remove");
         }
     }
 }

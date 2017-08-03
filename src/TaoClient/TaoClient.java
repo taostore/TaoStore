@@ -512,6 +512,32 @@ public class TaoClient implements Client {
         }
     }
 
+    @Override
+    public void writeStatistics() {
+        try {
+            // Get proxy name and port
+            Socket clientSocket = new Socket(mProxyAddress.getHostName(), mProxyAddress.getPort());
+
+            // Create output stream
+            DataOutputStream output = new DataOutputStream(clientSocket.getOutputStream());
+
+            // Create client request
+            ClientRequest request = mMessageCreator.createClientRequest();
+            request.setType(MessageTypes.WRITE_STATS);
+            request.setClientAddress(mClientAddress);
+
+            byte[] serializedRequest = request.serialize();
+            byte[] header = MessageUtility.createMessageHeaderBytes(request.getType(), serializedRequest.length);
+            output.write(header);
+
+            // Close streams and ports
+            clientSocket.close();
+            output.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * @brief Method to do a load test on proxy
      * @param client
@@ -575,10 +601,15 @@ public class TaoClient implements Client {
         synchronized (sAsycLoadLock) {
             sAsycLoadLock.wait();
         }
-
-
+        
         long endTime = System.currentTimeMillis();
         TaoLogger.logForce("Ending load test");
+
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {}
+
+        client.writeStatistics();
 
         // Get average response time over 1000 operations
         long total = 0;

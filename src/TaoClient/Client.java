@@ -41,4 +41,9 @@ public interface Client {
      * @brief Ask proxy to print it's subtree. Used for debugging
      */
     void printSubtree();
+
+    /**
+     * @brief Ask proxy to print it's statistical information. Used for profiling
+     */
+    void writeStatistics();
 }
