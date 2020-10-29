@@ -6,7 +6,7 @@
   <property name="module.jdk.bin.taostore" value="${project.jdk.bin}"/>
   <property name="module.jdk.classpath.taostore" value="${project.jdk.classpath}"/>
   
-  <property name="compiler.args.taostore" value="-encoding UTF-8 -source 14 -target 14 ${compiler.args}"/>
+  <property name="compiler.args.taostore" value="-encoding UTF-8 -source 11 -target 11 ${compiler.args}"/>
   
   <property name="taostore.output.dir" value="${module.taostore.basedir}/out/production/TaoStore"/>
   <property name="taostore.testoutput.dir" value="${module.taostore.basedir}/out/test/TaoStore"/>
