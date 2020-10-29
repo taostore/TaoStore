@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="taostore" default="all">
+  
+  
+  <property file="taostore.properties"/>
+  <!-- Uncomment the following property if no tests compilation is needed -->
+  <!-- 
+  <property name="skip.tests" value="true"/>
+   -->
+  
+  <!-- Compiler options -->
+  
+  <property name="compiler.debug" value="on"/>
+  <property name="compiler.generate.no.warnings" value="off"/>
+  <property name="compiler.args" value=""/>
+  <property name="compiler.max.memory" value="700m"/>
+  <patternset id="ignored.files">
+    <exclude name="**/*.hprof/**"/>
+    <exclude name="**/*.pyc/**"/>
+    <exclude name="**/*.pyo/**"/>
+    <exclude name="**/*.rbc/**"/>
+    <exclude name="**/*.yarb/**"/>
+    <exclude name="**/*~/**"/>
+    <exclude name="**/.DS_Store/**"/>
+    <exclude name="**/.git/**"/>
+    <exclude name="**/.hg/**"/>
+    <exclude name="**/.svn/**"/>
+    <exclude name="**/CVS/**"/>
+    <exclude name="**/__pycache__/**"/>
+    <exclude name="**/_svn/**"/>
+    <exclude name="**/vssver.scc/**"/>
+    <exclude name="**/vssver2.scc/**"/>
+  </patternset>
+  <patternset id="library.patterns">
+    <include name="*.egg"/>
+    <include name="*.zip"/>
+    <include name="*.war"/>
+    <include name="*.swc"/>
+    <include name="*.ear"/>
+    <include name="*.jar"/>
+    <include name="*.klib"/>
+    <include name="*.ane"/>
+  </patternset>
+  <patternset id="compiler.resources">
+    <exclude name="**/?*.java"/>
+    <exclude name="**/?*.form"/>
+    <exclude name="**/?*.class"/>
+    <exclude name="**/?*.groovy"/>
+    <exclude name="**/?*.scala"/>
+    <exclude name="**/?*.flex"/>
+    <exclude name="**/?*.kt"/>
+    <exclude name="**/?*.clj"/>
+    <exclude name="**/?*.aj"/>
+  </patternset>
+  
+  <!-- JDK definitions -->
+  
+  <property name="jdk.bin.14" value="${jdk.home.14}/bin"/>
+  <path id="jdk.classpath.14">
+    <fileset dir="${jdk.home.14}">
+      <include name="../java-14-openjdk!/java.base"/>
+      <include name="../java-14-openjdk!/java.compiler"/>
+      <include name="../java-14-openjdk!/java.datatransfer"/>
+      <include name="../java-14-openjdk!/java.desktop"/>
+      <include name="../java-14-openjdk!/java.instrument"/>
+      <include name="../java-14-openjdk!/java.logging"/>
+      <include name="../java-14-openjdk!/java.management"/>
+      <include name="../java-14-openjdk!/java.management.rmi"/>
+      <include name="../java-14-openjdk!/java.naming"/>
+      <include name="../java-14-openjdk!/java.net.http"/>
+      <include name="../java-14-openjdk!/java.prefs"/>
+      <include name="../java-14-openjdk!/java.rmi"/>
+      <include name="../java-14-openjdk!/java.scripting"/>
+      <include name="../java-14-openjdk!/java.se"/>
+      <include name="../java-14-openjdk!/java.security.jgss"/>
+      <include name="../java-14-openjdk!/java.security.sasl"/>
+      <include name="../java-14-openjdk!/java.smartcardio"/>
+      <include name="../java-14-openjdk!/java.sql"/>
+      <include name="../java-14-openjdk!/java.sql.rowset"/>
+      <include name="../java-14-openjdk!/java.transaction.xa"/>
+      <include name="../java-14-openjdk!/java.xml"/>
+      <include name="../java-14-openjdk!/java.xml.crypto"/>
+      <include name="../java-14-openjdk!/jdk.accessibility"/>
+      <include name="../java-14-openjdk!/jdk.aot"/>
+      <include name="../java-14-openjdk!/jdk.attach"/>
+      <include name="../java-14-openjdk!/jdk.charsets"/>
+      <include name="../java-14-openjdk!/jdk.compiler"/>
+      <include name="../java-14-openjdk!/jdk.crypto.cryptoki"/>
+      <include name="../java-14-openjdk!/jdk.crypto.ec"/>
+      <include name="../java-14-openjdk!/jdk.dynalink"/>
+      <include name="../java-14-openjdk!/jdk.editpad"/>
+      <include name="../java-14-openjdk!/jdk.hotspot.agent"/>
+      <include name="../java-14-openjdk!/jdk.httpserver"/>
+      <include name="../java-14-openjdk!/jdk.incubator.foreign"/>
+      <include name="../java-14-openjdk!/jdk.incubator.jpackage"/>
+      <include name="../java-14-openjdk!/jdk.internal.ed"/>
+      <include name="../java-14-openjdk!/jdk.internal.jvmstat"/>
+      <include name="../java-14-openjdk!/jdk.internal.le"/>
+      <include name="../java-14-openjdk!/jdk.internal.opt"/>
+      <include name="../java-14-openjdk!/jdk.internal.vm.ci"/>
+      <include name="../java-14-openjdk!/jdk.internal.vm.compiler"/>
+      <include name="../java-14-openjdk!/jdk.internal.vm.compiler.management"/>
+      <include name="../java-14-openjdk!/jdk.jartool"/>
+      <include name="../java-14-openjdk!/jdk.javadoc"/>
+      <include name="../java-14-openjdk!/jdk.jcmd"/>
+      <include name="../java-14-openjdk!/jdk.jconsole"/>
+      <include name="../java-14-openjdk!/jdk.jdeps"/>
+      <include name="../java-14-openjdk!/jdk.jdi"/>
+      <include name="../java-14-openjdk!/jdk.jdwp.agent"/>
+      <include name="../java-14-openjdk!/jdk.jfr"/>
+      <include name="../java-14-openjdk!/jdk.jlink"/>
+      <include name="../java-14-openjdk!/jdk.jshell"/>
+      <include name="../java-14-openjdk!/jdk.jsobject"/>
+      <include name="../java-14-openjdk!/jdk.jstatd"/>
+      <include name="../java-14-openjdk!/jdk.localedata"/>
+      <include name="../java-14-openjdk!/jdk.management"/>
+      <include name="../java-14-openjdk!/jdk.management.agent"/>
+      <include name="../java-14-openjdk!/jdk.management.jfr"/>
+      <include name="../java-14-openjdk!/jdk.naming.dns"/>
+      <include name="../java-14-openjdk!/jdk.naming.rmi"/>
+      <include name="../java-14-openjdk!/jdk.net"/>
+      <include name="../java-14-openjdk!/jdk.nio.mapmode"/>
+      <include name="../java-14-openjdk!/jdk.rmic"/>
+      <include name="../java-14-openjdk!/jdk.scripting.nashorn"/>
+      <include name="../java-14-openjdk!/jdk.scripting.nashorn.shell"/>
+      <include name="../java-14-openjdk!/jdk.sctp"/>
+      <include name="../java-14-openjdk!/jdk.security.auth"/>
+      <include name="../java-14-openjdk!/jdk.security.jgss"/>
+      <include name="../java-14-openjdk!/jdk.unsupported"/>
+      <include name="../java-14-openjdk!/jdk.unsupported.desktop"/>
+      <include name="../java-14-openjdk!/jdk.xml.dom"/>
+      <include name="../java-14-openjdk!/jdk.zipfs"/>
+    </fileset>
+  </path>
+  
+  <property name="project.jdk.home" value="${jdk.home.14}"/>
+  <property name="project.jdk.bin" value="${jdk.bin.14}"/>
+  <property name="project.jdk.classpath" value="jdk.classpath.14"/>
+  
+  <!-- Modules -->
+  
+  <import file="${basedir}/module_taostore.xml"/>
+  
+  <target name="init" description="Build initialization">
+    <!-- Perform any build initialization in this target -->
+  </target>
+  
+  <target name="clean" depends="clean.module.taostore" description="cleanup all"/>
+  
+  <target name="build.modules" depends="init, clean, compile.module.taostore" description="build all modules"/>
+  
+  <target name="all" depends="build.modules" description="build all"/>
+</project>
