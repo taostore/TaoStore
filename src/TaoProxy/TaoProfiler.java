@@ -70,7 +70,7 @@ public class TaoProfiler implements Profiler {
         String report = null;
         String filename = null;
 
-        filename = mOutputDirectory + File.pathSeparator + "readPathStats.txt";
+        filename = mOutputDirectory + "/" + "readPathStats.txt";
         synchronized (mReadPathStatistics) {
             report = mReadPathStatistics.toString();
         }
@@ -84,7 +84,7 @@ public class TaoProfiler implements Profiler {
         }
 
 
-        filename = mOutputDirectory + File.pathSeparator + "writeBackStats.txt";
+        filename = mOutputDirectory + "/" + "writeBackStats.txt";
         synchronized (mWriteBackStatistics) {
             report = mWriteBackStatistics.toString();
         }
@@ -97,7 +97,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "readPathSendToRecvStats.txt";
+        filename = mOutputDirectory + "/" + "readPathSendToRecvStats.txt";
         synchronized (mReadPathSendToRecvStatistics) {
             report = mReadPathSendToRecvStatistics.toString();
         }
@@ -110,7 +110,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "writeBackSendToRecvStats.txt";
+        filename = mOutputDirectory + "/" + "writeBackSendToRecvStats.txt";
         synchronized (mWriteBackSendToRecvStatistics) {
             report = mWriteBackSendToRecvStatistics.toString();
         }
@@ -123,7 +123,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "readPathServerProcessingStats.txt";
+        filename = mOutputDirectory + "/" + "readPathServerProcessingStats.txt";
         synchronized (mReadPathServerStatistics) {
             report = mReadPathServerStatistics.toString();
         }
@@ -136,7 +136,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "writeBackServerProcessingStats.txt";
+        filename = mOutputDirectory + "/" + "writeBackServerProcessingStats.txt";
         synchronized (mWriteBackServerStatistics) {
             report = mWriteBackServerStatistics.toString();
         }
@@ -149,7 +149,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "readPathNetStats.txt";
+        filename = mOutputDirectory + "/" + "readPathNetStats.txt";
         synchronized (mReadPathNetStatistics) {
             report = mReadPathNetStatistics.toString();
         }
@@ -162,7 +162,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "writeBackNetStats.txt";
+        filename = mOutputDirectory + "/" + "writeBackNetStats.txt";
         synchronized (mWriteBackNetStatistics) {
             report = mWriteBackNetStatistics.toString();
         }
@@ -175,7 +175,7 @@ public class TaoProfiler implements Profiler {
             e.printStackTrace();
         }
 
-        filename = mOutputDirectory + File.pathSeparator + "addPathStats.txt";
+        filename = mOutputDirectory + "/" + "addPathStats.txt";
         synchronized (mAddPathStatistics) {
             report = mAddPathStatistics.toString();
         }

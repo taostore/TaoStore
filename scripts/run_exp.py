@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+!/usr/bin/env python3
 
 import os
 import re
@@ -10,7 +10,6 @@ import time
 WD = os.path.join("/", "usr", "local", "src", "TaoStore")
 CONFIGS_DIR = os.path.join(WD, "configs")
 DEFAULT_CONFIG = os.path.join(CONFIGS_DIR, "default.config")
-EXP_CONFIG = os.path.join(CONFIGS_DIR, "experiment.config")
 
 BASE_CMD = "java --class-path ./out/production/TaoStore:./libs/guava-19.0.jar:./libs/commons-math3-3.6.1.jar:./libs/junit-4.11.jar"
 CLIENT_CLASS = "TaoClient.TaoClient"
@@ -23,9 +22,16 @@ def run_sync(cmd):
                    cwd=WD,
                    check=True)
 
+
+def run_sync_unchecked(cmd):
+    subprocess.run(shlex.split(cmd),
+                   cwd=WD)
+
+
 def run(cmd):
     return subprocess.Popen(shlex.split(cmd),
                             cwd=WD,
+                            stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT)
 
 
@@ -47,6 +53,17 @@ def server_cmd(config):
     return cmd
 
 
+def generate_log_dirname(config):
+    dirname = ""
+
+    fields = ["tag", "num_blocks", "num_operations", "num_clients"]
+    for field in fields:
+        if field in config:
+            dirname += field + "@" + str(config[field]) + "__"
+
+    return dirname[:-2]
+
+
 def generate_configs():
     configs = []
     default = {
@@ -58,10 +75,15 @@ def generate_configs():
     # SCALABILITY
     for num_clients in [2**i for i in range(0, 4)]:
         scalability = default.copy()
+
+        scalability["tag"] = "scalability"
         scalability["num_clients"] = num_clients
 
         configs.append(scalability)
 
+
+    for config in configs:
+        config["log_directory"] = generate_log_dirname(config)
     
     return configs
 
@@ -77,17 +99,27 @@ def write_config_file(config):
     with open(config["config_file"], "r") as config_file:
         config_string = config_file.read()
 
-    config_string = replace_config_line(config_string,
-                                        "proxy_thread_count", config["num_clients"])
+    field_mappings = [
+        ("log_directory", "log_directory"),
+        ("num_clients", "proxy_thread_count"),
+    ]
 
+    for fm in field_mappings:
+        config_string = replace_config_line(config_string, fm[1], config[fm[0]])
 
-    with open(EXP_CONFIG, "w") as config_file:
+    log_directory = config["log_directory"]
+    if not os.path.exists(log_directory):
+        os.makedirs(log_directory)
+    
+    config_filename = os.path.join(log_directory, "experiment.config")
+    with open(config_filename, "w") as config_file:
         config_file.write(config_string)
     
-    config["config_file"] = EXP_CONFIG
+    config["config_file"] = config_filename
 
 
 def reset_state():
+    run_sync_unchecked("killall -q java")
     run_sync("rm -f oram.txt")
     run_sync("ant clean all")
 
@@ -101,6 +133,14 @@ def run_exp(config):
     client = run(client_cmd(config))
 
     client.wait()
+    try:
+        stdout, stderr = client.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
+        print("Experiment failed!")
+        
+    stdout = stdout.decode("utf-8")
+    with open(os.path.join(config["log_directory"], "client.log"), "w+") as f:
+              f.write(stdout)
 
     server.kill()
     proxy.kill()
