@@ -132,7 +132,6 @@ def run_exp(config):
     proxy = run(proxy_cmd(config))
     client = run(client_cmd(config))
 
-    client.wait()
     try:
         stdout, stderr = client.communicate(timeout=120)
     except subprocess.TimeoutExpired:
