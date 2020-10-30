@@ -83,6 +83,7 @@ public class TaoClient implements Client {
             // Get the current client's IP
             String currentIP = InetAddress.getLocalHost().getHostAddress();
             mClientAddress = new InetSocketAddress(currentIP, TaoConfigs.CLIENT_PORT);
+	    System.out.println("CLIENT_PORT: " + TaoConfigs.CLIENT_PORT);
 
             // Initialize proxy address
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
@@ -324,6 +325,7 @@ public class TaoClient implements Client {
         Runnable r = () -> {
             try {
                 // Create an asynchronous channel to listen for connections
+		System.out.println("mClientAddress.port: " + mClientAddress.getPort());
                 AsynchronousServerSocketChannel channel =
                         AsynchronousServerSocketChannel.open(mThreadGroup).bind(new InetSocketAddress(mClientAddress.getPort()));
 
@@ -458,8 +460,10 @@ public class TaoClient implements Client {
     @Override
     public Future<byte[]> readAsync(long blockID) {
         Callable<byte[]> readTask = () -> {
+
             // Make request
             ClientRequest request = makeRequest(MessageTypes.CLIENT_READ_REQUEST, blockID, null, null);
+	    TaoLogger.logInfo("Doing read request #" + request.getRequestID() + " for block " + blockID);
 
             // Send read request
             ProxyResponse response = sendRequestWait(request);
@@ -474,8 +478,11 @@ public class TaoClient implements Client {
     @Override
     public Future<Boolean> writeAsync(long blockID, byte[] data) {
         Callable<Boolean> readTask = () -> {
+
+	    
             // Make request
             ClientRequest request = makeRequest(MessageTypes.CLIENT_WRITE_REQUEST, blockID, data, null);
+	    TaoLogger.logInfo("Doing write request #" + request.getRequestID() + " for block " + blockID);
 
             // Send write request
             ProxyResponse response = sendRequestWait(request);
@@ -580,7 +587,7 @@ public class TaoClient implements Client {
             targetBlock = r.nextInt(NUM_DATA_ITEMS) + 1;
 
             if (readOrWrite == 0) {
-                TaoLogger.logInfo("Doing read request #" + ((TaoClient) client).mRequestID.get() + " for block " + targetBlock);
+		//TaoLogger.logInfo("Doing read request #" + ((TaoClient) client).mRequestID.get() + " for block " + targetBlock);
 
                 // Send read and keep track of response time
                 long start = System.currentTimeMillis();
@@ -589,7 +596,7 @@ public class TaoClient implements Client {
 
 
             } else {
-                TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
+                //TaoLogger.logInfo("Doing write request #" + ((TaoClient) client).mRequestID.get());
 
                 // Send write and keep track of response time
                 long start = System.currentTimeMillis();
