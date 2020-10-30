@@ -1,5 +1,8 @@
 # Default configuration file
 
+# Log directory
+log_directory=.
+
 # Name of the file each storage server will store information too
 oram_file=oram.txt
 

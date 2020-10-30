@@ -75,11 +75,11 @@ public class TaoProxy implements Proxy {
             // For trace purposes
             TaoLogger.logLevel = TaoLogger.LOG_OFF;
 
-            // For profiling purposes
-            mProfiler = new TaoProfiler();
-
             // Initialize needed constants
             TaoConfigs.initConfiguration();
+
+            // For profiling purposes
+            mProfiler = new TaoProfiler();
 
             // Create a CryptoUtil
             mCryptoUtil = new TaoCryptoUtil();

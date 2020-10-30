@@ -19,6 +19,9 @@ public class TaoConfigs {
     // Name of file that users can provide to change the below defaults
     public static String USER_CONFIG_FILE = "config.properties";
 
+    // Path of log file directory
+    public static String LOG_DIRECTORY;
+
     // Name of the file each storage server will store information too
     public static String ORAM_FILE;
 
@@ -103,6 +106,9 @@ public class TaoConfigs {
 
             // If we have already initialized the configurations, we don't want to do it again
             if (!mHasBeenInitialized.getAndSet(true)) {
+
+                // Assign the log directory path
+                LOG_DIRECTORY = properties.getProperty("log_directory");
 
                 // Assign the file that will be used for ORAM storage
                 ORAM_FILE = properties.getProperty("oram_file");
