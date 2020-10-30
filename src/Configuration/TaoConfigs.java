@@ -119,8 +119,6 @@ public class TaoConfigs {
                 String client_port = properties.getProperty("client_port");
                 CLIENT_PORT = Integer.parseInt(client_port);
 
-		System.out.println("client_port: " + client_port);
-
                 // Assign proxy hostname
                 PROXY_HOSTNAME = properties.getProperty("proxy_hostname");
 

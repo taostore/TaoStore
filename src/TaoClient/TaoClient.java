@@ -83,7 +83,6 @@ public class TaoClient implements Client {
             // Get the current client's IP
             String currentIP = InetAddress.getLocalHost().getHostAddress();
             mClientAddress = new InetSocketAddress(currentIP, TaoConfigs.CLIENT_PORT);
-	    System.out.println("CLIENT_PORT: " + TaoConfigs.CLIENT_PORT);
 
             // Initialize proxy address
             mProxyAddress = new InetSocketAddress(TaoConfigs.PROXY_HOSTNAME, TaoConfigs.PROXY_PORT);
@@ -325,7 +324,6 @@ public class TaoClient implements Client {
         Runnable r = () -> {
             try {
                 // Create an asynchronous channel to listen for connections
-		System.out.println("mClientAddress.port: " + mClientAddress.getPort());
                 AsynchronousServerSocketChannel channel =
                         AsynchronousServerSocketChannel.open(mThreadGroup).bind(new InetSocketAddress(mClientAddress.getPort()));
 
