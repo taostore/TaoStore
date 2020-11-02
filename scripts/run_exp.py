@@ -61,7 +61,7 @@ def generate_log_dirname(config):
         if field in config:
             dirname += field + "@" + str(config[field]) + "__"
 
-    return dirname[:-2]
+    return os.path.join(".", "logs", dirname[:-2])
 
 
 def generate_configs():
@@ -73,7 +73,7 @@ def generate_configs():
     }
 
     # SCALABILITY
-    for num_clients in [2**i for i in range(0, 4)]:
+    for num_clients in [2**i for i in range(0, 5)]:
         scalability = default.copy()
 
         scalability["tag"] = "scalability"

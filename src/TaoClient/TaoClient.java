@@ -626,6 +626,7 @@ public class TaoClient implements Client {
         // TODO: Fix this average
         //TaoLogger.logForce("Average response time was " + average + " ms");
         TaoLogger.logForce("Test took " + (endTime - startTime) + " ms");
+        TaoLogger.logForce("Throughput: " + 1000. * LOAD_SIZE / (endTime - startTime) + " ops/s");
     }
 
     public static void loadTest(Client client) throws InterruptedException {
